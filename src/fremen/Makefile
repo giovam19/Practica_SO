@@ -8,3 +8,6 @@ fremen.o: fremen.c ConfigFichero.h
 
 ConfigFichero.o: ConfigFichero.c ConfigFichero.h
 	gcc -c ConfigFichero.c -Wall -Wextra
+
+cleano:
+	rm *.o

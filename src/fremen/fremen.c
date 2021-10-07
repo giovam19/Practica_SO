@@ -1,7 +1,7 @@
 #include <stdio.h>
-#include "FicheroConfig.h"
+#include "ConfigFichero.h"
 
-int main(int argc, char const *argv[]) {
+int main() {
     Configuracion datos;
 
 	datos = leerFichero("config.dat");

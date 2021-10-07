@@ -1,4 +1,4 @@
-#include "FicheroConfig.h"
+#include "ConfigFichero.h"
 
 char* read_until(int fd, char end) {
     int i = 0, size;
