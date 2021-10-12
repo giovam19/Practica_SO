@@ -48,24 +48,14 @@ char **getArgumentos(char* str, int posicion){
 	return argumentos;
 }
 
-void comandoLinux(char *comando) {
+void comandoLinux(char *comando, char *input) {
     char **argumento;
     int pid;
-    
-    /*char *comandoAux = (char*)malloc(sizeof(char));
-    int posicion;
-    for(posicion = 0; comando[posicion] != ' ' && comando[posicion] != '\0';posicion++){
-        comandoAux = (char *) realloc(comandoAux, sizeof(char) * (posicion + 2));
-        comandoAux[posicion] = comando[posicion];
-        
-    }*/
-    //Se necesita pasar todo el comando completo como "ls -l -a" y no como en la varable comando
-    argumento = getArgumentos("ls -l -a",2);
+    argumento = getArgumentos(input,(int)sizeof(comando));
     pid = fork();
 
     if (pid == 0) {
         int status = execvp(comando, argumento);
-
         if (status == -1) {
             printf("error execvp\n");
         }
@@ -75,9 +65,8 @@ void comandoLinux(char *comando) {
 }
 
 void menuComandos(char *input) {
+    
     char *comando = comandoToMinus(input);
-
-    printf("Comando: %s\n", comando);
 
     if (strcmp(comando, "login") == 0) {
         write(1, "login ok\n", 9);
@@ -91,21 +80,20 @@ void menuComandos(char *input) {
         write(1, "logout ok\n", 10);
     } else {
         write(1, "linux\n", 6);
-        comandoLinux(comando);
+        comandoLinux(comando,input);
     }
 }
 
 int main() {
     //Configuracion datos;
-    char input[20];
-
+    char input[40];
+    int n;
 	//datos = leerFichero("config.dat");
 
     while(1) {
         bzero(input, strlen(input));
-        read(0, input, 20);
-        input[strlen(input)-1] = '\0';
-        
+        n = read(0, input, 40);
+        input[n-1] = '\0';
         menuComandos(input);
     }
     
