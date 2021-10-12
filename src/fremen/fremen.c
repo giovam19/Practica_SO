@@ -26,10 +26,41 @@ char *comandoToMinus(char *input) {
     return comandoaux;
 }
 
+
+char **getArgumentos(char* str, int posicion){
+    char** argumentos;
+    int j = 0;
+    int k = 0;
+    argumentos = (char**)malloc(sizeof(char*));
+    argumentos[0] = (char*)malloc(sizeof(char));
+    
+    for (int i = posicion; str[i] != '\0'; i++) {
+        if(str[i] != ' '){
+            argumentos[j] = (char *) realloc(argumentos[j], sizeof(char) * (k + 2));
+            argumentos[j][k] = str[i];
+            k++;
+        } else{
+            argumentos = (char**)realloc(argumentos,sizeof(char*)*(10));
+            j++;
+            k = 0;
+        }
+    }
+	return argumentos;
+}
+
 void comandoLinux(char *comando) {
     char **argumento;
     int pid;
-
+    
+    /*char *comandoAux = (char*)malloc(sizeof(char));
+    int posicion;
+    for(posicion = 0; comando[posicion] != ' ' && comando[posicion] != '\0';posicion++){
+        comandoAux = (char *) realloc(comandoAux, sizeof(char) * (posicion + 2));
+        comandoAux[posicion] = comando[posicion];
+        
+    }*/
+    //Se necesita pasar todo el comando completo como "ls -l -a" y no como en la varable comando
+    argumento = getArgumentos("ls -l -a",2);
     pid = fork();
 
     if (pid == 0) {
@@ -46,7 +77,7 @@ void comandoLinux(char *comando) {
 void menuComandos(char *input) {
     char *comando = comandoToMinus(input);
 
-    printf("%s\n", comando);
+    printf("Comando: %s\n", comando);
 
     if (strcmp(comando, "login") == 0) {
         write(1, "login ok\n", 9);
@@ -59,7 +90,7 @@ void menuComandos(char *input) {
     } else if (strcmp(comando, "logout") == 0) {
         write(1, "logout ok\n", 10);
     } else {
-        write(1, "error\n", 6);
+        write(1, "linux\n", 6);
         comandoLinux(comando);
     }
 }
