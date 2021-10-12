@@ -50,8 +50,14 @@ char **getArgumentos(char* str, int posicion){
 
 void comandoLinux(char *comando, char *input) {
     char **argumento;
-    int pid;
-    argumento = getArgumentos(input,(int)sizeof(comando));
+    int pid,i;
+    printf("comando: %s\n", comando);
+    printf("input: %s\n", input);
+    
+    for(i = 0; input[i] != ' '; i++){
+    }
+    printf("size: %d\n", i);
+    argumento = getArgumentos(input,i);
     pid = fork();
 
     if (pid == 0) {
