@@ -10,7 +10,7 @@
 #include <ctype.h>
 #include "ConfigFichero.h"
 
-// hacer funcion separa argumentos por espacios.
+#define print(x) write(1, x, strlen(x))
 
 char *comandoToMinus(char *input) {
     char *comandoaux = (char *) malloc(sizeof(char));
@@ -33,9 +33,8 @@ char *comandoToMinus(char *input) {
 }
 
 
-char **getArgumentos(char* str){
+char **getArgumentos(char* str, int *numArgs){
     int j = 0;
-
     int num_argumentos = 0;
 
     for(int i = 0; str[i] != '\0'; i++){
@@ -44,6 +43,8 @@ char **getArgumentos(char* str){
         }
     }
     
+    *numArgs = num_argumentos - 1;
+
     char *token;
     char **argumentos = (char**)malloc(sizeof(char*)*(num_argumentos+1));
     /* get the first token */
@@ -65,41 +66,80 @@ char **getArgumentos(char* str){
 	return argumentos;
 }
 
-void comandoLinux(char *comando, char *input) {
-    char **argumento;
+void comandoLinux(char *comando, char **argumentos) {
     int pid;
     
-    argumento = getArgumentos(input);
     pid = fork();
-
-    if (pid == 0) {
-        int status = execvp(comando, argumento);
-        if (status == -1) {
-            printf("error execvp\n");
-        }
-    } else {
-        wait(NULL);
+    switch (pid) {
+        case -1:
+            print("Error ejecutando comando\n");
+            break;
+        case 0: //Fill
+            execvp(comando, argumentos);
+            break;
+        default: //Pare
+            wait(NULL);
+            break;
     }
 }
 
-void menuComandos(char *input) {
-    
-    char *comando = comandoToMinus(input);
 
-    if (strcmp(comando, "login") == 0) {
-        write(1, "login ok\n", 9);
-    } else if (strcmp(comando, "search") == 0) {
-        write(1, "search ok\n", 10);
-    } else if (strcmp(comando, "send") == 0) {
-        write(1, "send ok\n", 10);
-    } else if (strcmp(comando, "photo") == 0) {
-        write(1, "photo ok\n", 10);
-    } else if (strcmp(comando, "logout") == 0) {
-        write(1, "logout ok\n", 10);
+
+void menuComandos(char *input) {
+    int num_argumentos;
+    char *comando;
+    char **argumentos; 
+    
+    comando = comandoToMinus(input);
+    argumentos = getArgumentos(input, &num_argumentos);
+
+    if (strcmp(comando, "login") == 0) { //Login
+        if (num_argumentos < 2) {
+            print("Comanda KO. Falta parametres\n");
+        } else if (num_argumentos > 2) {
+            print("Comanda KO. Massa parametres\n");
+        } else {
+            print("Comanda OK\n");
+        }
+    } else if (strcmp(comando, "search") == 0) { //Search
+        if (num_argumentos < 1) {
+            print("Comanda KO. Falta parametres\n");
+        } else if (num_argumentos > 1) {
+            print("Comanda KO. Massa parametres\n");
+        } else {
+            print("Comanda OK\n");
+        }
+    } else if (strcmp(comando, "send") == 0) { //Send
+        if (num_argumentos < 1) {
+            print("Comanda KO. Falta parametres\n");
+        } else if (num_argumentos > 1) {
+            print("Comanda KO. Massa parametres\n");
+        } else {
+            print("Comanda OK\n");
+        }
+    } else if (strcmp(comando, "photo") == 0) { //Photo
+        if (num_argumentos < 1) {
+            print("Comanda KO. Falta parametres\n");
+        } else if (num_argumentos > 1) {
+            print("Comanda KO. Massa parametres\n");
+        } else {
+            print("Comanda OK\n");
+        }
+    } else if (strcmp(comando, "logout") == 0) { //Logout
+        if (num_argumentos > 0) {
+            print("Comanda KO. Massa parametres\n");
+        } else { //Linux
+            print("Comanda OK\n");
+        }
     } else {
-        write(1, "linux\n", 6);
-        comandoLinux(comando,input);
+        comandoLinux(comando, argumentos);
     }
+
+    free(comando);
+    for (int i = 0; i < num_argumentos+1; i++) {
+        free(argumentos[i]);
+    }
+    free(argumentos);
 }
 
 int main() {
@@ -107,9 +147,13 @@ int main() {
     char input[40];
     int n;
 	//datos = leerFichero("config.dat");
+    //revisar lectura de datos
+
+    print("Benvingut a Fremen\n");
 
     while(1) {
         bzero(input, strlen(input));
+        print("$ ");
         n = read(0, input, 40);
         input[n-1] = '\0';
         menuComandos(input);
