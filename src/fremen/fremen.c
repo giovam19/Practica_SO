@@ -15,49 +15,61 @@
 char *comandoToMinus(char *input) {
     char *comandoaux = (char *) malloc(sizeof(char));
     int i;
-
-    for (i = 0; input[i] != ' ' && input[i] != '\0'; i++) {
-        comandoaux = (char *) realloc(comandoaux, sizeof(char) * (i + 2));
-        comandoaux[i] = tolower(input[i]);
+    int j = 0;
+    int k = 0;
+    while(input[j] == ' ' && input[j] != '\0'){
+        j++;
     }
-
-    comandoaux[i] = '\0';
-
+    if(input[j] == '\0'){
+        j = 0;
+    }
+    for (i = j; input[i] != ' ' && input[i] != '\0'; i++) {
+        comandoaux = (char *) realloc(comandoaux, sizeof(char) * (i + 2));
+        comandoaux[k] = tolower(input[i]);
+        k++;
+    }
+    comandoaux[k] = '\0';
     return comandoaux;
 }
 
 
-char **getArgumentos(char* str, int posicion){
-    char** argumentos;
+char **getArgumentos(char* str){
     int j = 0;
-    int k = 0;
-    argumentos = (char**)malloc(sizeof(char*));
-    argumentos[0] = (char*)malloc(sizeof(char));
-    
-    for (int i = posicion; str[i] != '\0'; i++) {
-        if(str[i] != ' '){
-            argumentos[j] = (char *) realloc(argumentos[j], sizeof(char) * (k + 2));
-            argumentos[j][k] = str[i];
-            k++;
-        } else{
-            argumentos = (char**)realloc(argumentos,sizeof(char*)*(10));
-            j++;
-            k = 0;
+
+    int num_argumentos = 0;
+
+    for(int i = 0; str[i] != '\0'; i++){
+        if((str[i] != ' ' && str[i+1] == ' ' )|| (str[i] != ' ' && str[i+1] == '\0')){
+            num_argumentos++;
         }
+    }
+    
+    char *token;
+    char **argumentos = (char**)malloc(sizeof(char*)*(num_argumentos+1));
+    /* get the first token */
+    for(int i = 0; i < num_argumentos; i++){
+        argumentos[i] = (char*)malloc(sizeof(char)+1);
+    }
+    
+    
+    token= strtok(str, " ");
+    argumentos[0] = token;
+    /* walk through other tokens */
+    while( token != NULL) {
+        j++;
+        token = strtok(NULL, " ");
+        if(token != NULL) {
+            argumentos[j] = token;
+        }    
     }
 	return argumentos;
 }
 
 void comandoLinux(char *comando, char *input) {
     char **argumento;
-    int pid,i;
-    printf("comando: %s\n", comando);
-    printf("input: %s\n", input);
+    int pid;
     
-    for(i = 0; input[i] != ' '; i++){
-    }
-    printf("size: %d\n", i);
-    argumento = getArgumentos(input,i);
+    argumento = getArgumentos(input);
     pid = fork();
 
     if (pid == 0) {
