@@ -136,20 +136,24 @@ void menuComandos(char *input) {
     }
 
     free(comando);
-    for (int i = 0; i < num_argumentos+1; i++) {
+    /*for (int i = 0; i < num_argumentos+1; i++) {
+        print(argumentos[i]);
+        print("\n");
         free(argumentos[i]);
-    }
+    }*/
     free(argumentos);
 }
 
 int main() {
-    //Configuracion datos;
-    char input[40];
+    Configuracion datos;
+    char input[40], buffer[100];
     int n;
-	//datos = leerFichero("config.dat");
-    //revisar lectura de datos
+	datos = leerFichero("config.dat");
 
     print("Benvingut a Fremen\n");
+    //revisar lectura de datos
+    sprintf(buffer, "IP: %s\n", datos.ip);
+    print(buffer);
 
     while(1) {
         bzero(input, strlen(input));
