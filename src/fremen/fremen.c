@@ -1,3 +1,8 @@
+/*
+    giovanni.vecchies
+    josue.terrazas
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -11,26 +16,6 @@
 #include "ConfigFichero.h"
 
 #define print(x) write(1, x, strlen(x))
-
-char *comandoToMinus(char *input) {
-    char *comandoaux = (char *) malloc(sizeof(char));
-    int i;
-    int j = 0;
-    int k = 0;
-    while(input[j] == ' ' && input[j] != '\0'){
-        j++;
-    }
-    if(input[j] == '\0'){
-        j = 0;
-    }
-    for (i = j; input[i] != ' ' && input[i] != '\0'; i++) {
-        comandoaux = (char *) realloc(comandoaux, sizeof(char) * (i + 2));
-        comandoaux[k] = tolower(input[i]);
-        k++;
-    }
-    comandoaux[k] = '\0';
-    return comandoaux;
-}
 
 
 char **getArgumentos(char* str, int *numArgs){
@@ -87,13 +72,13 @@ void comandoLinux(char *comando, char **argumentos) {
 
 void menuComandos(char *input) {
     int num_argumentos;
-    char *comando;
     char **argumentos; 
     
-    comando = comandoToMinus(input);
+
+    
     argumentos = getArgumentos(input, &num_argumentos);
 
-    if (strcmp(comando, "login") == 0) { //Login
+    if (strcasecmp(input, "login") == 0) { //Login
         if (num_argumentos < 2) {
             print("Comanda KO. Falta parametres\n");
         } else if (num_argumentos > 2) {
@@ -101,7 +86,7 @@ void menuComandos(char *input) {
         } else {
             print("Comanda OK\n");
         }
-    } else if (strcmp(comando, "search") == 0) { //Search
+    } else if (strcasecmp(input, "search") == 0) { //Search
         if (num_argumentos < 1) {
             print("Comanda KO. Falta parametres\n");
         } else if (num_argumentos > 1) {
@@ -109,7 +94,7 @@ void menuComandos(char *input) {
         } else {
             print("Comanda OK\n");
         }
-    } else if (strcmp(comando, "send") == 0) { //Send
+    } else if (strcasecmp(input, "send") == 0) { //Send
         if (num_argumentos < 1) {
             print("Comanda KO. Falta parametres\n");
         } else if (num_argumentos > 1) {
@@ -117,7 +102,7 @@ void menuComandos(char *input) {
         } else {
             print("Comanda OK\n");
         }
-    } else if (strcmp(comando, "photo") == 0) { //Photo
+    } else if (strcasecmp(input, "photo") == 0) { //Photo
         if (num_argumentos < 1) {
             print("Comanda KO. Falta parametres\n");
         } else if (num_argumentos > 1) {
@@ -125,30 +110,39 @@ void menuComandos(char *input) {
         } else {
             print("Comanda OK\n");
         }
-    } else if (strcmp(comando, "logout") == 0) { //Logout
+    } else if (strcasecmp(input, "logout") == 0) { //Logout
         if (num_argumentos > 0) {
             print("Comanda KO. Massa parametres\n");
         } else { //Linux
             print("Comanda OK\n");
+            printf("Desconnectat d’Atreides. Dew!\n");
+            exit(0);
         }
     } else {
-        comandoLinux(comando, argumentos);
+        comandoLinux(input, argumentos);
     }
-
-    free(comando);
+    //free(input);
     /*for (int i = 0; i < num_argumentos+1; i++) {
         print(argumentos[i]);
         print("\n");
         free(argumentos[i]);
     }*/
-    free(argumentos);
+    //free(argumentos);
+    
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     Configuracion datos;
     char input[40], buffer[100];
     int n;
-	datos = leerFichero("config.dat");
+
+    if(argc != 2){
+        print("Error. Numero de argumentos no es correcto!\n");
+        exit(0);
+    }
+
+	datos = leerFichero(argv[1]);
+
 
     print("Benvingut a Fremen\n");
     //revisar lectura de datos
@@ -162,6 +156,7 @@ int main() {
         input[n-1] = '\0';
         menuComandos(input);
     }
+    
     
     return 0;
 }
