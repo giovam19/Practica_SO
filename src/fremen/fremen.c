@@ -18,6 +18,7 @@
 
 #define print(x) write(1, x, strlen(x))
 
+Configuracion datos;
 char **argumentos;
 int num_argumentos;
 
@@ -34,6 +35,10 @@ void signalHandler(int signum) {
             free(argumentos[i]);
         }
         free(argumentos);
+        free(datos.ip);
+        free(datos.directorio);
+
+        print("Saliendo Fremen.\n");
 
         signal(SIGINT, SIG_DFL);
         raise(SIGINT);
@@ -44,6 +49,13 @@ void getArgumentos(char* str){
     int j = 0;
     char *token;
 
+    if (argumentos != NULL) {
+        for (int i = 0; i < num_argumentos; i++) {
+            free(argumentos[i]);
+        }
+        free(argumentos);
+    }
+    
     num_argumentos = 0;
 
     for(int i = 0; str[i] != '\0'; i++){
@@ -52,7 +64,7 @@ void getArgumentos(char* str){
             
         }
     }
-    
+
     argumentos = (char**) malloc(sizeof(char*) * (num_argumentos+1));
     
     /* get the first token */
@@ -60,7 +72,7 @@ void getArgumentos(char* str){
         argumentos[i] = (char*) malloc(sizeof(char));
     }
     
-    token= strtok(str, " ");
+    token = strtok(str, " ");
     strcpy(argumentos[0], token);
     strcpy(str, argumentos[0]);
     
@@ -72,6 +84,8 @@ void getArgumentos(char* str){
             strcpy(argumentos[j], token);
         }    
     }
+
+    free(token);
 }
 
 void comandoLinux(char *comando, char **args) {
@@ -149,7 +163,6 @@ void menuComandos(char *input) {
 }
 
 int main(int argc, char* argv[]) {
-    Configuracion datos;
     char input[40];
     int n;
 
@@ -166,6 +179,7 @@ int main(int argc, char* argv[]) {
 
     print("Benvingut a Fremen\n");
     print(datos.ip);
+    print("\n");
 
     while(1) {
         bzero(input, strlen(input));

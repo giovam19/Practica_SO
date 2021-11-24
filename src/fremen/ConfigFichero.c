@@ -29,9 +29,14 @@ Configuracion leerFichero(char *nombre) {
     if (fdFichero > 0) {
         char *data = read_until(fdFichero, '\n');
         datos.tiempo = atoi(data);
+        free(data);
+
         datos.ip = read_until(fdFichero, '\n');
+        
         data = read_until(fdFichero, '\n');
         datos.puerto = atoi(data);
+        free(data);
+
         datos.directorio = read_until(fdFichero, '\0');
 
         close(fdFichero);
