@@ -17,18 +17,64 @@
 
 #define print(x) write(1, x, strlen(x))
 
-void *prueba(void *arg) {
-    int *num = (int *) num;
-    printf("Thread del hilo numero: %d\n", *num);
+typedef struct {
+    char origen[16];
+    char tipo;
+    char data[241];
+} Trama;
 
-    return (void *) arg;
+void *prueba(void *arg) {
+    int *clienteFD = (int *) arg;
+    int i, j;
+    char buffer[256];
+    Trama trama;
+
+    while(1){
+        int size = read(*clienteFD, buffer, 256);
+        if (size == 0) {
+            break;
+        }
+
+        bzero(&trama.origen, sizeof(trama.origen));
+        bzero(&trama.data, sizeof(trama.data));
+
+        for (i = 0; buffer[i] != '$'; i++) {
+            trama.origen[i] = buffer[i];
+        }
+
+        for (i++; buffer[i] != '$'; i++) {
+            trama.tipo = buffer[i];
+        }
+        j = 0;
+        for (i++; buffer[i] != '\0'; i++) {
+            trama.data[j] = buffer[i];
+            j++;
+        }
+
+        bzero(&buffer, sizeof(buffer));
+        
+        if (trama.tipo == 'C') {
+            printf("%s\n", trama.data);
+            sprintf(buffer, "ATREIDES$O$%d", *clienteFD);
+            write(*clienteFD, buffer, strlen(buffer));
+        } else {
+            sprintf(buffer, "ATREIDES$E$ERROR");
+            write(*clienteFD, buffer, strlen(buffer));
+        }
+
+    }
+
+    close(*clienteFD);
+    printf("cerro el fd: %d\n", *clienteFD);
+
+    return NULL;
 }
 
 int main(int argc, char* argv[]) {
     Conexion datos;
     struct sockaddr_in servidor;
     pthread_t *threads;
-    int servidorFD, totalFremens;
+    int servidorFD, totalFremens, *fdClients;
 
     totalFremens = 0; //inicializar de otra manera
 
@@ -75,14 +121,16 @@ int main(int argc, char* argv[]) {
             if(totalFremens == 0){
                 threads = (pthread_t *)malloc(sizeof(pthread_t));
                 //threadStruct = (ThreadStruct *)malloc(sizeof(ThreadStruct));
-                //fdClients = (int *)malloc(sizeof(int));
+                fdClients = (int *)malloc(sizeof(int));
             } else {
                 threads = (pthread_t *)realloc(threads, sizeof(pthread_t) * (totalFremens + 1));
                 //threadStruct = (ThreadStruct *)realloc(threadStruct, sizeof(ThreadStruct) * (totalClients + 1));
-                //fdClients = (int *)realloc(fdClients, sizeof(int) * (totalClients + 1));
+                fdClients = (int *)realloc(fdClients, sizeof(int) * (totalFremens + 1));
+                printf("nuevo creado\n");
             }
+            fdClients[totalFremens] = newFremen;
 
-			int controlThread = pthread_create(&threads[totalFremens], NULL, prueba, &totalFremens);
+			int controlThread = pthread_create(&threads[totalFremens], NULL, prueba, (void *)&fdClients[totalFremens]);
 
             if(controlThread < 0){
                 print("Error Thread\n");
