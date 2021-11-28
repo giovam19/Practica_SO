@@ -1,3 +1,8 @@
+/*
+    giovanni.vecchies
+    josue.terrazas
+*/
+
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -23,13 +28,64 @@ typedef struct {
     char data[241];
 } Trama;
 
+typedef struct {
+    int id;
+    char *nombre;
+    char *c_postal;
+} Usuario;
+
+char **actualUsers;
+int num_actuals, actual_size;
+int fdUsuarios;
+
+int guardaUsuario(char* usuario){
+    char* buffer;
+    char* id;
+    int num_usuarios, id_user = -1;
+    int i;
+    int registrado = 0;
+    fdUsuarios = open("lista.txt",O_RDWR);
+    buffer = read_until(fdUsuarios, '\n');
+    num_usuarios = atoi(buffer);
+
+    for(i = 0; i <= num_usuarios; i++) {
+
+        buffer = read_until(fdUsuarios, '&');
+        id = read_until(fdUsuarios,'\n');
+        if(strcmp(buffer,usuario) == 0) {
+            id_user = atoi(id);
+            registrado = 1;
+            break;
+        }
+    }
+    if(registrado == 0){
+        char buffer3[100];
+        id_user = num_usuarios+1;
+        sprintf(buffer3,"%s&%d\n",usuario,id_user);
+        write(fdUsuarios, buffer3, strlen(buffer3));
+        close(fdUsuarios);
+        fdUsuarios = open("lista.txt",O_RDWR);
+        num_usuarios++;
+        char buffer2[5];
+        sprintf(buffer2,"%d\n",num_usuarios);
+        write(fdUsuarios,buffer2, strlen(buffer2));
+
+    }
+
+    close(fdUsuarios);
+    return id_user;
+}
+
 void *prueba(void *arg) {
     int *clienteFD = (int *) arg;
-    int i, j;
+    int i, j, logged;
     char buffer[256];
     Trama trama;
+    Usuario user;
 
-    while(1){
+    logged = 0;
+
+    while(1) {
         int size = read(*clienteFD, buffer, 256);
         if (size == 0) {
             break;
@@ -53,10 +109,59 @@ void *prueba(void *arg) {
 
         bzero(&buffer, sizeof(buffer));
         
-        if (trama.tipo == 'C') {
-            printf("%s\n", trama.data);
-            sprintf(buffer, "ATREIDES$O$%d", *clienteFD);
+        if (trama.tipo == 'C' && logged == 0) {
+            logged = 1;
+            user.id = guardaUsuario(trama.data);
+            sprintf(buffer, "ATREIDES$O$%d", user.id);
             write(*clienteFD, buffer, strlen(buffer));
+
+            char *aux = (char *) malloc(sizeof(char) * strlen(trama.data));
+            strcpy(aux, trama.data);
+
+            char *token = strtok(aux, "*");
+
+            user.nombre = (char *) malloc(sizeof(char) * strlen(token));
+            user.c_postal = (char *) malloc(sizeof(char));
+            strcpy(user.nombre, token);
+
+            while(token != NULL) {
+                token = strtok(NULL, "*");
+                if (token != NULL) {
+                    user.c_postal = (char *) realloc(user.c_postal, sizeof(char) * strlen(token));
+                    strcpy(user.c_postal, token);
+                }
+            }
+
+            free(token);
+
+            sprintf(buffer, "Rebut login %s %s\n", user.nombre, user.c_postal);
+            print(buffer);
+            sprintf(buffer, "Assignat a ID %d.\n", user.id);
+            print(buffer);
+            print("Enviada resposta\n\n");
+
+            actualUsers[num_actuals] = (char *) malloc(sizeof(char) * strlen(trama.data));
+            strcpy(actualUsers[num_actuals], trama.data);
+            num_actuals++;
+            if (num_actuals >= actual_size) {
+                actualUsers = (char **) realloc(actualUsers, sizeof(char *) * num_actuals);
+                actual_size = num_actuals;
+            }
+        } else if (trama.tipo == 'S' && logged == 1) {
+            //search
+        } else if (trama.tipo == 'Q' && logged == 1) {
+            for (int i = 0; i < actual_size; i++) {
+                if (strcmp(actualUsers[i], trama.data) == 0) {
+                    bzero(&actualUsers[i], sizeof(actualUsers[i]));
+                    num_actuals--;
+                    break;
+                }
+            }
+
+            sprintf(buffer, "Rebut logout de  %s %s\n", user.nombre, user.c_postal);
+            print(buffer);
+            print("Desconnectat d’Atreides.\n");
+            print("Esperant connexions...\n\n");
         } else {
             sprintf(buffer, "ATREIDES$E$ERROR");
             write(*clienteFD, buffer, strlen(buffer));
@@ -65,7 +170,6 @@ void *prueba(void *arg) {
     }
 
     close(*clienteFD);
-    printf("cerro el fd: %d\n", *clienteFD);
 
     return NULL;
 }
@@ -77,6 +181,8 @@ int main(int argc, char* argv[]) {
     int servidorFD, totalFremens, *fdClients;
 
     totalFremens = 0; //inicializar de otra manera
+    num_actuals = 0;
+    actual_size = 0;
 
     if(argc != 2){
         print("Error. Numero de argumentos no es correcto!\n");
@@ -108,6 +214,7 @@ int main(int argc, char* argv[]) {
 	
     socklen_t len = sizeof(servidor);
 
+    actualUsers = (char **) malloc(sizeof(char *));
     print("SERVIDOR ATREIDES\n");
     print("Llegit el fitxer de configuracio\n");
     print("Esperant connexions... \n\n");
@@ -126,7 +233,6 @@ int main(int argc, char* argv[]) {
                 threads = (pthread_t *)realloc(threads, sizeof(pthread_t) * (totalFremens + 1));
                 //threadStruct = (ThreadStruct *)realloc(threadStruct, sizeof(ThreadStruct) * (totalClients + 1));
                 fdClients = (int *)realloc(fdClients, sizeof(int) * (totalFremens + 1));
-                printf("nuevo creado\n");
             }
             fdClients[totalFremens] = newFremen;
 

@@ -22,26 +22,45 @@
 
 #define print(x) write(1, x, strlen(x))
 
+typedef struct {
+    char origen[16];
+    char tipo;
+    char data[241];
+} Trama;
+
+typedef struct {
+    char *id;
+    char *nombre;
+    char *c_postal;
+} Usuario;
+
 Configuracion datos;
+Usuario user;
 char **argumentos;
 int num_argumentos;
 int socketFD;
 
-void signalHandler(int signum) {
-    if (signum == SIGINT) {
-        //vaciar memoria
-        for (int i = 0; i < num_argumentos; i++) {
-            free(argumentos[i]);
-        }
-        free(argumentos);
-        free(datos.ip);
-        free(datos.directorio);
+Trama fillTrama(char *buffer) {
+    Trama trama;
+    int i, j;
 
-        print("Saliendo Fremen.\n");
+    bzero(&trama.origen, sizeof(trama.origen));
+    bzero(&trama.data, sizeof(trama.data));
 
-        signal(SIGINT, SIG_DFL);
-        raise(SIGINT);
+    for (i = 0; buffer[i] != '$'; i++) {
+        trama.origen[i] = buffer[i];
     }
+
+    for (i++; buffer[i] != '$'; i++) {
+        trama.tipo = buffer[i];
+    }
+    j = 0;
+    for (i++; buffer[i] != '\0'; i++) {
+        trama.data[j] = buffer[i];
+        j++;
+    }
+
+    return trama;
 }
 
 void getArgumentos(char* str){
@@ -112,8 +131,9 @@ void comandoLinux(char *comando, char **args) {
 void loginAtreides() {
     struct sockaddr_in cliente;
     char buffer[256];
-    socketFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    Trama trama;
 
+    socketFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
     if(socketFD < 0){
         print("Error creant el socket\n");
@@ -135,14 +155,64 @@ void loginAtreides() {
         return;
     }
 
+    user.nombre = (char *) realloc(user.nombre, sizeof(char) * strlen(argumentos[1]));
+    user.c_postal = (char *) realloc(user.c_postal, sizeof(char) * strlen(argumentos[2]));
+
+    strcpy(user.nombre, argumentos[1]);
+    strcpy(user.c_postal, argumentos[2]);
+
     sprintf(buffer, "FREMEN$C$%s*%s", argumentos[1], argumentos[2]);
     write(socketFD, buffer, strlen(buffer));
 
     bzero(&buffer, sizeof(buffer));
     read(socketFD, buffer, 256);
 
-    printf("%s\n", buffer);
+    trama = fillTrama(buffer);
 
+    if (trama.tipo == 'O') {
+        char buffer2[300];
+        sprintf(buffer2, "Benvingut %s. Tens ID %s\n", argumentos[1], trama.data);
+        print(buffer2);
+        print("Ara estàs connectat a Atreides.\n");
+        user.id = (char *) malloc(sizeof(char) * strlen(trama.data));
+        strcpy(user.id, trama.data);
+    } else {
+        print("Error en Login.\n");
+    }
+}
+
+void searchInServer() {
+    char buffer[256];
+
+    sprintf(buffer, "FREMEN$S$%s*%s*%s", user.nombre, user.id, argumentos[1]);
+    //write(socketFD, buffer, strlen(buffer));
+}
+
+void logoutServer() {
+    char buffer[256];
+
+    sprintf(buffer, "FREMEN$Q$%s*%s", user.nombre, user.c_postal);
+    write(socketFD, buffer, strlen(buffer));
+
+    close(socketFD);
+}
+
+void signalHandler(int signum) {
+    if (signum == SIGINT) {
+        logoutServer();
+        //vaciar memoria
+        for (int i = 0; i < num_argumentos; i++) {
+            free(argumentos[i]);
+        }
+        free(argumentos);
+        free(datos.ip);
+        free(datos.directorio);
+
+        print("Saliendo Fremen.\n");
+
+        signal(SIGINT, SIG_DFL);
+        raise(SIGINT);
+    }
 }
 
 void menuComandos(char *input) {
@@ -163,7 +233,7 @@ void menuComandos(char *input) {
         } else if (num_argumentos - 1 > 1) {
             print("Comanda KO. Massa parametres\n");
         } else {
-            write(socketFD, "sigue abierto este \n", strlen("sigue abierto este \n"));
+            searchInServer();
         }
     } else if (strcasecmp(input, "send") == 0) { //Send
         if (num_argumentos - 1 < 1) {
@@ -185,7 +255,7 @@ void menuComandos(char *input) {
         if (num_argumentos - 1 > 0) {
             print("Comanda KO. Massa parametres\n");
         } else { //Linux
-            print("Comanda OK\n");
+            logoutServer();
             print("Desconnectat d’Atreides. Dew!\n");
             exit(0);
         }
@@ -201,6 +271,9 @@ int main(int argc, char* argv[]) {
 
     argumentos = NULL;
     num_argumentos = 0;
+
+    user.nombre = (char *) malloc(sizeof(char));
+    user.c_postal = (char *) malloc(sizeof(char));
 
     if(argc != 2){
         print("Error. Numero de argumentos no es correcto!\n");
