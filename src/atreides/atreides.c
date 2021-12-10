@@ -16,6 +16,7 @@
 #include <string.h>
 #include <strings.h>
 #include <ctype.h>
+#include <signal.h>
 #include <pthread.h>
 #include <netdb.h>
 #include "Conexion.h"
@@ -36,14 +37,13 @@ typedef struct {
 
 char **actualUsers;
 int num_actuals, actual_size;
-int fdUsuarios;
 
 int guardaUsuario(char* usuario){
     char* buffer;
     char* id;
     int num_usuarios, id_user = -1;
     int i;
-    int registrado = 0;
+    int fdUsuarios, registrado = 0;
     fdUsuarios = open("lista.txt",O_RDWR);
     buffer = read_until(fdUsuarios, '\n');
     num_usuarios = atoi(buffer);
@@ -76,7 +76,27 @@ int guardaUsuario(char* usuario){
     return id_user;
 }
 
-void *prueba(void *arg) {
+void createTramaSend(char *trama, char tipo, char *data) {
+    int i, j;
+    char origen[15] = "ATREIDES\0\0\0\0\0\0\0";
+
+    j = 0;
+    for (i = 0; i < 15; i++) {
+        trama[i] = origen[j];
+        j++;
+    }
+
+    trama[15] = tipo;
+
+    j = 0;
+    for (i = 16; i < 256; i++) {
+        trama[i] = data[j];
+        j++;
+    }
+
+}
+
+void *clientController(void *arg) {
     int *clienteFD = (int *) arg;
     int i, j, logged;
     char buffer[256];
@@ -91,18 +111,14 @@ void *prueba(void *arg) {
             break;
         }
 
-        bzero(&trama.origen, sizeof(trama.origen));
-        bzero(&trama.data, sizeof(trama.data));
-
-        for (i = 0; buffer[i] != '$'; i++) {
+        for (i = 0; i < 15; i++) {
             trama.origen[i] = buffer[i];
         }
 
-        for (i++; buffer[i] != '$'; i++) {
-            trama.tipo = buffer[i];
-        }
+        trama.tipo = buffer[i];
+
         j = 0;
-        for (i++; buffer[i] != '\0'; i++) {
+        for (i++; i < 256; i++) {
             trama.data[j] = buffer[i];
             j++;
         }
@@ -110,10 +126,16 @@ void *prueba(void *arg) {
         bzero(&buffer, sizeof(buffer));
         
         if (trama.tipo == 'C' && logged == 0) {
+            //login
+            char data[240];
+
             logged = 1;
             user.id = guardaUsuario(trama.data);
-            sprintf(buffer, "ATREIDES$O$%d", user.id);
-            write(*clienteFD, buffer, strlen(buffer));
+
+            bzero(&data, 240);
+            sprintf(data, "%d", user.id);
+            createTramaSend(buffer, 'O', data);
+            write(*clienteFD, buffer, 265);
 
             char *aux = (char *) malloc(sizeof(char) * strlen(trama.data));
             strcpy(aux, trama.data);
@@ -148,8 +170,9 @@ void *prueba(void *arg) {
                 actual_size = num_actuals;
             }
         } else if (trama.tipo == 'S' && logged == 1) {
-            //search
+            //search 
         } else if (trama.tipo == 'Q' && logged == 1) {
+            //logout
             for (int i = 0; i < actual_size; i++) {
                 if (strcmp(actualUsers[i], trama.data) == 0) {
                     bzero(&actualUsers[i], sizeof(actualUsers[i]));
@@ -162,6 +185,8 @@ void *prueba(void *arg) {
             print(buffer);
             print("Desconnectat d’Atreides.\n");
             print("Esperant connexions...\n\n");
+
+            break;
         } else {
             sprintf(buffer, "ATREIDES$E$ERROR");
             write(*clienteFD, buffer, strlen(buffer));
@@ -172,6 +197,19 @@ void *prueba(void *arg) {
     close(*clienteFD);
 
     return NULL;
+}
+
+void signalHandler(int signum) {
+    if (signum == SIGINT) {
+        //vaciar memoria
+
+        signal(SIGINT, SIG_DFL);
+        raise(SIGINT);
+    }
+    if (signum == SIGUSR1) {
+        // kill thread;
+        pthread_exit(NULL);
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -236,7 +274,7 @@ int main(int argc, char* argv[]) {
             }
             fdClients[totalFremens] = newFremen;
 
-			int controlThread = pthread_create(&threads[totalFremens], NULL, prueba, (void *)&fdClients[totalFremens]);
+			int controlThread = pthread_create(&threads[totalFremens], NULL, clientController, (void *)&fdClients[totalFremens]);
 
             if(controlThread < 0){
                 print("Error Thread\n");

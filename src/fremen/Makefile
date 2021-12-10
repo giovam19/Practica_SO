@@ -1,7 +1,7 @@
-all: fremen
+all: Fremen
 
-fremen: fremen.o ConfigFichero.o
-	gcc fremen.o ConfigFichero.o -o fremen -Wall -Wextra
+Fremen: fremen.o ConfigFichero.o
+	gcc fremen.o ConfigFichero.o -o Fremen -Wall -Wextra
 
 fremen.o: fremen.c ConfigFichero.h
 	gcc -c fremen.c -Wall -Wextra
@@ -13,4 +13,4 @@ cleano:
 	rm *.o
 
 clean:
-	rm *.o fremen
+	rm *.o Fremen

@@ -47,15 +47,14 @@ Trama fillTrama(char *buffer) {
     bzero(&trama.origen, sizeof(trama.origen));
     bzero(&trama.data, sizeof(trama.data));
 
-    for (i = 0; buffer[i] != '$'; i++) {
+    for (i = 0; i < 15; i++) {
         trama.origen[i] = buffer[i];
     }
 
-    for (i++; buffer[i] != '$'; i++) {
-        trama.tipo = buffer[i];
-    }
+    trama.tipo = buffer[i];
+
     j = 0;
-    for (i++; buffer[i] != '\0'; i++) {
+    for (i++; i < 256; i++) {
         trama.data[j] = buffer[i];
         j++;
     }
@@ -128,9 +127,29 @@ void comandoLinux(char *comando, char **args) {
     }
 }
 
+void createTramaSend(char *trama, char tipo, char *data) {
+    int i, j;
+    char origen[15] = "FREMEN\0\0\0\0\0\0\0\0\0";
+
+    j = 0;
+    for (i = 0; i < 15; i++) {
+        trama[i] = origen[j];
+        j++;
+    }
+
+    trama[15] = tipo;
+
+    j = 0;
+    for (i = 16; i < 256; i++) {
+        trama[i] = data[j];
+        j++;
+    }
+
+}
+
 void loginAtreides() {
     struct sockaddr_in cliente;
-    char buffer[256];
+    char buffer[256], data[240];
     Trama trama;
 
     socketFD = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -155,14 +174,18 @@ void loginAtreides() {
         return;
     }
 
+
     user.nombre = (char *) realloc(user.nombre, sizeof(char) * strlen(argumentos[1]));
     user.c_postal = (char *) realloc(user.c_postal, sizeof(char) * strlen(argumentos[2]));
 
     strcpy(user.nombre, argumentos[1]);
     strcpy(user.c_postal, argumentos[2]);
+    
+    bzero(&data, 240);
+    sprintf(data, "%s*%s", argumentos[1], argumentos[2]);
 
-    sprintf(buffer, "FREMEN$C$%s*%s", argumentos[1], argumentos[2]);
-    write(socketFD, buffer, strlen(buffer));
+    createTramaSend(buffer, 'C', data);
+    write(socketFD, buffer, 265);
 
     bzero(&buffer, sizeof(buffer));
     read(socketFD, buffer, 256);
@@ -171,7 +194,7 @@ void loginAtreides() {
 
     if (trama.tipo == 'O') {
         char buffer2[300];
-        sprintf(buffer2, "Benvingut %s. Tens ID %s\n", argumentos[1], trama.data);
+        sprintf(buffer2, "Benvingut %s. Tens ID %s\n", user.nombre, trama.data);
         print(buffer2);
         print("Ara estàs connectat a Atreides.\n");
         user.id = (char *) malloc(sizeof(char) * strlen(trama.data));
@@ -182,17 +205,33 @@ void loginAtreides() {
 }
 
 void searchInServer() {
-    char buffer[256];
+    char buffer[256], data[240];
+    Trama trama;
 
-    sprintf(buffer, "FREMEN$S$%s*%s*%s", user.nombre, user.id, argumentos[1]);
-    //write(socketFD, buffer, strlen(buffer));
+    bzero(&data, 240);
+    sprintf(data, "%s*%s*%s", user.nombre, user.id, argumentos[1]);
+    createTramaSend(buffer, 'S', data);
+    write(socketFD, buffer, 256);
+
+    bzero(&buffer, sizeof(buffer));
+    read(socketFD, buffer, 256);
+
+    trama = fillTrama(buffer);
+
+    if (trama.tipo == 'L') {
+
+    } else {
+        print("Error en Search.\n");
+    }
 }
 
 void logoutServer() {
-    char buffer[256];
+    char buffer[256], data[240];
 
-    sprintf(buffer, "FREMEN$Q$%s*%s", user.nombre, user.c_postal);
-    write(socketFD, buffer, strlen(buffer));
+    bzero(&data, 240);
+    sprintf(data, "%s*%s", user.nombre, user.c_postal);
+    createTramaSend(buffer, 'Q', data);
+    write(socketFD, buffer, 256);
 
     close(socketFD);
 }
@@ -284,8 +323,6 @@ int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
 
     print("Benvingut a Fremen\n");
-    print(datos.ip);
-    print("\n");
 
     while(1) {
         bzero(input, strlen(input));
