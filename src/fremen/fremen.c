@@ -6,9 +6,10 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <arpa/inet.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/un.h>
-#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -44,8 +45,8 @@ Trama fillTrama(char *buffer) {
     Trama trama;
     int i, j;
 
-    bzero(&trama.origen, sizeof(trama.origen));
-    bzero(&trama.data, sizeof(trama.data));
+    bzero(&trama.origen, 16);
+    bzero(&trama.data, 241);
 
     for (i = 0; i < 15; i++) {
         trama.origen[i] = buffer[i];
@@ -62,15 +63,16 @@ Trama fillTrama(char *buffer) {
     return trama;
 }
 
-void getArgumentos(char* str){
-    int j = 0;
-    char *token;
+char *getArgumentos(char* str){
+    int j, f;
+    //char *token;
 
     if (argumentos != NULL) {
         for (int i = 0; i < num_argumentos; i++) {
             free(argumentos[i]);
         }
         free(argumentos);
+        argumentos = NULL;
     }
     
     num_argumentos = 0;
@@ -78,31 +80,32 @@ void getArgumentos(char* str){
     for(int i = 0; str[i] != '\0'; i++){
         if((str[i] != ' ' && str[i+1] == ' ' )|| (str[i] != ' ' && str[i+1] == '\0')){
             num_argumentos++;
-            
         }
     }
 
     argumentos = (char**) malloc(sizeof(char*) * (num_argumentos+1));
     
-    /* get the first token */
     for(int i = 0; i < num_argumentos; i++){
         argumentos[i] = (char*) malloc(sizeof(char));
     }
     
-    token = strtok(str, " ");
-    strcpy(argumentos[0], token);
-    strcpy(str, argumentos[0]);
-    
-    /* walk through other tokens */
-    while( token != NULL) {
-        j++;
-        token = strtok(NULL, " ");
-        if(token != NULL) {
-            strcpy(argumentos[j], token);
-        }    
+    j=0;
+    f=0;
+    for(int i = 0; str[i] != '\0'; i++) {
+        if (str[i] != ' ') {
+            argumentos[j][f] = str[i];
+            f++;
+            argumentos[j] = (char *) realloc(argumentos[j], sizeof(char) * (f + 1));
+        }
+                
+        if((str[i] != ' ' && str[i+1] == ' ' ) || (str[i] != ' ' && str[i+1] == '\0')){
+            argumentos[j][f] = '\0';
+            j++;
+            f = 0;
+        }
     }
 
-    free(token);
+    return argumentos[0];
 }
 
 void comandoLinux(char *comando, char **args) {
@@ -147,6 +150,41 @@ void createTramaSend(char *trama, char tipo, char *data) {
 
 }
 
+void getMD5Sum(char *photoName, char checksum[33]) {
+    int fd[2];
+    int n;
+    char buffer[100];
+
+    if (pipe(fd)==-1){
+        print("Error en crear pipe\n");
+        exit(-1);
+    }
+
+    n=fork();
+    switch (n){
+        case -1:// Si hi ha error el podem tractar
+            break;
+        case 0: //ESTEM AL FILL
+            close(fd[0]);
+            dup2(fd[1], 1);
+            dup2(fd[1], 2);
+            execlp("md5sum", "md5sum", photoName, NULL);
+            break;
+        default://ESTEM AL PARE
+            wait(NULL);
+            close(fd[1]);
+            read(fd[0], buffer, 32);
+            close(fd[0]);
+
+            for (int i = 0; i < 32; i++) {
+                checksum[i] = buffer[i];
+            }
+            checksum[32] = '\0';
+
+            break;
+    }
+}
+
 void loginAtreides() {
     struct sockaddr_in cliente;
     char buffer[256], data[240];
@@ -175,8 +213,8 @@ void loginAtreides() {
     }
 
 
-    user.nombre = (char *) realloc(user.nombre, sizeof(char) * strlen(argumentos[1]));
-    user.c_postal = (char *) realloc(user.c_postal, sizeof(char) * strlen(argumentos[2]));
+    user.nombre = (char *) malloc(sizeof(char) * (strlen(argumentos[1])+1));
+    user.c_postal = (char *) malloc(sizeof(char) * (strlen(argumentos[2])+1));
 
     strcpy(user.nombre, argumentos[1]);
     strcpy(user.c_postal, argumentos[2]);
@@ -185,7 +223,7 @@ void loginAtreides() {
     sprintf(data, "%s*%s", argumentos[1], argumentos[2]);
 
     createTramaSend(buffer, 'C', data);
-    write(socketFD, buffer, 265);
+    write(socketFD, buffer, 256);
 
     bzero(&buffer, sizeof(buffer));
     read(socketFD, buffer, 256);
@@ -197,7 +235,7 @@ void loginAtreides() {
         sprintf(buffer2, "Benvingut %s. Tens ID %s\n", user.nombre, trama.data);
         print(buffer2);
         print("Ara estàs connectat a Atreides.\n");
-        user.id = (char *) malloc(sizeof(char) * strlen(trama.data));
+        user.id = (char *) malloc(sizeof(char) * (strlen(trama.data)+1));
         strcpy(user.id, trama.data);
     } else {
         print("Error en Login.\n");
@@ -213,39 +251,244 @@ void searchInServer() {
     createTramaSend(buffer, 'S', data);
     write(socketFD, buffer, 256);
 
-    bzero(&buffer, sizeof(buffer));
+    bzero(&buffer, 256);
     read(socketFD, buffer, 256);
 
     trama = fillTrama(buffer);
 
     if (trama.tipo == 'L') {
+        char *dataAux, *nombreAux, *idAux;
+        int i, j, num_personas;
+        
+        dataAux = (char*) malloc(sizeof(char) * 242);
+        nombreAux = (char*) malloc(sizeof(char));
+        idAux = (char*) malloc(sizeof(char));
+        i = 0;
+        
+        printf("llego 1\n");
+        printf("%s, %s\n", dataAux, trama.data);
+        for(j = 0; trama.data[j] != '*'; j++){
+            dataAux[j] = trama.data[j];
+        }
+
+        printf("llego 2\n");
+        
+        num_personas = atoi(dataAux);
+        sprintf(dataAux, "Hi ha %d persones humanes a %s.\n", num_personas, argumentos[1]);
+        print(dataAux);
+        
+        printf("llego 3\n");
+        
+        for(int k = 0; k < num_personas; k++) {
+            i = 0;
+            for(j++; trama.data[j] != '*' && trama.data[j] != '\0'; j++){
+                nombreAux[i] = trama.data[j];
+                i++;
+                //nombreAux = (char*) realloc(nombreAux, sizeof(char) * (i+1));
+            }
+            nombreAux[i] = '\0';
+            i = 0;
+            for(j++; trama.data[j] != '*' && trama.data[j] != '\0'; j++){
+                idAux[i] = trama.data[j];
+                i++;
+                //idAux = (char*) realloc(idAux, sizeof(char) * (i+1));
+            }     
+            sprintf(dataAux, "%s %s\n", idAux, nombreAux);
+            print(dataAux);
+        }
+
+        free(dataAux);
 
     } else {
         print("Error en Search.\n");
     }
 }
 
-void logoutServer() {
-    char buffer[256], data[240];
+void sendImage() {
+    char checksum5[33], buffer[256], data[240];
+    int fdImg, size, vueltas, resto;
+    struct stat st;
+    Trama trama;
+
+    fdImg = open(argumentos[1], O_RDONLY);
+
+    if (fdImg < 0) {
+        print("Error abriendo Imagen\n");
+        return;
+    }
+
+    //calculamos md5sum
+    bzero(&checksum5, 32);
+    getMD5Sum(argumentos[1], checksum5);
+
+    //calculamos mida del archivo
+    fstat(fdImg, &st);
+    size = st.st_size;
+    vueltas = size / 240;
+    resto = size - (vueltas * 240);
 
     bzero(&data, 240);
-    sprintf(data, "%s*%s", user.nombre, user.c_postal);
-    createTramaSend(buffer, 'Q', data);
+    sprintf(data, "%s*%d*%s", argumentos[1], size, checksum5);
+    createTramaSend(buffer, 'F', data);
     write(socketFD, buffer, 256);
 
-    close(socketFD);
+    //enviar datos imagen
+    for (int i = 0; i < vueltas; i++) {
+        bzero(&buffer, 240);
+        bzero(&data, 240);
+        read(fdImg, data, 240);
+        createTramaSend(buffer, 'D', data);
+        write(socketFD, buffer, 256);
+    }
+
+    bzero(&buffer, 240);
+    bzero(&data, 240);
+    read(fdImg, data, resto);
+    createTramaSend(buffer, 'D', data);
+    write(socketFD, buffer, 256);
+
+    close(fdImg);
+
+    bzero(&buffer, sizeof(buffer));
+    read(socketFD, buffer, 256);
+
+    trama = fillTrama(buffer);
+    
+    if (trama.tipo == 'I') {
+        print("Foto enviada amb exit a Atreides.\n");
+    } else if (trama.tipo == 'R') {
+        print("Image KO.\n");
+    }
+}
+
+void getPhoto() {
+    char buffer[256], data[240];
+    Trama trama;
+
+    bzero(&data, 240);
+    sprintf(data, "%s", argumentos[1]);
+    createTramaSend(buffer, 'P', data);
+    write(socketFD, buffer, 256);
+
+    //leer
+    bzero(&buffer, sizeof(buffer));
+    read(socketFD, buffer, 256);
+
+    trama = fillTrama(buffer);
+
+    if (strcmp(trama.data, "FILE NOT FOUND") == 0) {
+        //not found
+        print("No hi ha foto registrada.\n");
+    } else {
+        //found
+        int i, j, fdImg, size, vueltas, resto;
+        char foto[31], checksum[33], thisChecksum[33];
+        
+        bzero(&foto, 31);
+        j = 0;
+        for (i = 0; trama.data[i] != '*'; i++) {
+            foto[j] = trama.data[i];
+            j++;
+        }
+
+        bzero(&checksum, 33);
+        j = 0;
+        for (i++; trama.data[i] != '*'; i++) {
+            checksum[j] = trama.data[i];
+            j++;
+        }
+        size = atoi(checksum);
+
+        bzero(&checksum, 33);
+        j = 0;
+        for (i++; j < 32; i++) {
+            checksum[j] = trama.data[i];
+            j++;
+        }
+
+        fdImg = open(foto, O_CREAT|O_WRONLY|O_TRUNC, 00777);
+        if (fdImg < 0) {
+            print("Error creando la imagen\n");
+        } else {
+            vueltas = size / 240;
+            resto = size - (vueltas * 240);
+            for (int i = 0; i < vueltas; i++) {
+                read(socketFD, buffer, 256);
+                trama = fillTrama(buffer);
+                if (trama.tipo == 'D') {
+                    write(fdImg, trama.data, 240);
+                    bzero(&buffer, sizeof(buffer));
+                }
+            }
+            read(socketFD, buffer, 256);
+            trama = fillTrama(buffer);
+            if (trama.tipo == 'D') {
+                write(fdImg, trama.data, resto);
+                bzero(&buffer, sizeof(buffer));
+            }
+
+            close(fdImg);
+
+            getMD5Sum(foto, thisChecksum);
+
+            if (strcmp(checksum, thisChecksum) == 0) {
+                bzero(&data, 240);
+                sprintf(data, "IMAGE OK");
+                createTramaSend(buffer, 'I', data);
+                write(socketFD, buffer, 256);
+            } else {
+                bzero(&data, 240);
+                sprintf(data, "IMAGE KO");
+                createTramaSend(buffer, 'R', data);
+                write(socketFD, buffer, 256);
+            }
+            
+            print("Foto descarregada\n");
+        }
+
+    }
+}
+
+void freeAllMemory() {
+        for (int i = 0; i < num_argumentos; i++) {
+            if (argumentos[i] != NULL)
+                free(argumentos[i]);
+        }
+
+        if (argumentos != NULL)
+            free(argumentos);
+        if (datos.ip != NULL)
+            free(datos.ip);
+        if (datos.directorio != NULL)
+            free(datos.directorio);
+        if (user.nombre != NULL)
+            free(user.nombre);
+        if (user.c_postal != NULL)
+            free(user.c_postal);
+        if (user.id != NULL)
+            free(user.id);
+}
+
+void logoutServer() {
+
+    if (socketFD > 0) {
+        char buffer[256], data[240];
+
+        bzero(&data, 240);
+        sprintf(data, "%s*%s", user.nombre, user.c_postal);
+        createTramaSend(buffer, 'Q', data);
+        write(socketFD, buffer, 256);
+        close(socketFD);
+    }
+
 }
 
 void signalHandler(int signum) {
     if (signum == SIGINT) {
         logoutServer();
+
         //vaciar memoria
-        for (int i = 0; i < num_argumentos; i++) {
-            free(argumentos[i]);
-        }
-        free(argumentos);
-        free(datos.ip);
-        free(datos.directorio);
+        freeAllMemory();
 
         print("Saliendo Fremen.\n");
 
@@ -254,9 +497,9 @@ void signalHandler(int signum) {
     }
 }
 
-void menuComandos(char *input) {
+void menuComandos(char *str) {
 
-    getArgumentos(input);
+    char *input = getArgumentos(str);
 
     if (strcasecmp(input, "login") == 0) { //Login
         if (num_argumentos - 1 < 2) {
@@ -280,7 +523,7 @@ void menuComandos(char *input) {
         } else if (num_argumentos - 1 > 1) {
             print("Comanda KO. Massa parametres\n");
         } else {
-            print("Comanda OK\n");
+            sendImage();
         }
     } else if (strcasecmp(input, "photo") == 0) { //Photo
         if (num_argumentos - 1 < 1) {
@@ -288,17 +531,21 @@ void menuComandos(char *input) {
         } else if (num_argumentos - 1 > 1) {
             print("Comanda KO. Massa parametres\n");
         } else {
-            print("Comanda OK\n");
+            getPhoto();
         }
     } else if (strcasecmp(input, "logout") == 0) { //Logout
         if (num_argumentos - 1 > 0) {
             print("Comanda KO. Massa parametres\n");
         } else { //Linux
             logoutServer();
+            freeAllMemory();
             print("Desconnectat d’Atreides. Dew!\n");
             exit(0);
         }
     } else {
+        num_argumentos++;
+        argumentos = (char**) realloc(argumentos, sizeof(char*) * (num_argumentos+1));
+        argumentos[num_argumentos-1] = (char *) NULL;
         comandoLinux(input, argumentos);
     }
     
@@ -311,8 +558,9 @@ int main(int argc, char* argv[]) {
     argumentos = NULL;
     num_argumentos = 0;
 
-    user.nombre = (char *) malloc(sizeof(char));
-    user.c_postal = (char *) malloc(sizeof(char));
+    user.nombre = NULL;
+    user.c_postal = NULL;
+    user.id = NULL;
 
     if(argc != 2){
         print("Error. Numero de argumentos no es correcto!\n");
@@ -325,7 +573,7 @@ int main(int argc, char* argv[]) {
     print("Benvingut a Fremen\n");
 
     while(1) {
-        bzero(input, strlen(input));
+        bzero(input, 40);
         print("$ ");
         n = read(0, input, 40);
         input[n-1] = '\0';

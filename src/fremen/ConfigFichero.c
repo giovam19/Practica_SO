@@ -24,6 +24,9 @@ Configuracion leerFichero(char *nombre) {
     Configuracion datos;
     int fdFichero;
 
+    datos.ip = NULL;
+    datos.directorio = NULL;
+
     fdFichero = open(nombre, O_RDONLY);
 
     if (fdFichero > 0) {
