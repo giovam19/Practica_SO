@@ -21,6 +21,9 @@ typedef struct {
 } Conexion;
 
 Conexion leerFichero(char *nombre);
+
 char* read_until(int fd, char end);
+
+void my_read_until(int fd, char end, char *string);
 
 #endif

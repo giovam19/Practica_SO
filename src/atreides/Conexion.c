@@ -3,7 +3,8 @@
 char* read_until(int fd, char end) {
     int i = 0, size;
     char c = '\0';
-    char* string = (char*)malloc(sizeof(char));
+    
+    char *string = (char*) malloc(sizeof(char) * 2);
 
     while (1) {
         size = read(fd, &c, sizeof(char));
@@ -27,6 +28,7 @@ Conexion leerFichero(char *nombre) {
     fdFichero = open(nombre, O_RDONLY);
 
     if (fdFichero > 0) {
+
         datos.ip = read_until(fdFichero, '\n');
         
         datos.puerto = read_until(fdFichero, '\n');

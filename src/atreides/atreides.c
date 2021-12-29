@@ -22,6 +22,7 @@
 #include "Conexion.h"
 
 #define print(x) write(1, x, strlen(x))
+#define MAX_NOMBRE 50
 
 typedef struct {
     char origen[16];
@@ -31,35 +32,39 @@ typedef struct {
 
 typedef struct {
     int id;
-    char *nombre;
-    char *c_postal;
+    char nombre[MAX_NOMBRE];
+    char c_postal[MAX_NOMBRE];
 } Usuario;
 
+Conexion datos;
 char **actualUsers;
-int num_actuals, actual_size, connectedFremens, *fdClients;
+int num_actuals, connectedFremens, *fdClients, servidorFD;
 pthread_t *threads;
 
-int guardaUsuario(char* usuario){
-    char* buffer;
-    char* id;
+int guardaUsuario(char usuario[240]){
+    char *buffer, *id;
     int num_usuarios, id_user = -1;
     int i;
     int fdUsuarios, registrado = 0;
+
     fdUsuarios = open("lista.txt", O_CREAT|O_RDWR, 00777);
     buffer = read_until(fdUsuarios, '\n');
     num_usuarios = atoi(buffer);
 
-
+    free(buffer);
 
     for(i = 0; i <= num_usuarios; i++) {
-
         buffer = read_until(fdUsuarios, '&');
         id = read_until(fdUsuarios,'\n');
         if(strcmp(buffer,usuario) == 0) {
             id_user = atoi(id);
             registrado = 1;
+            free(buffer);
+            free(id);
             break;
         }
+        free(buffer);
+        free(id);
     }
 
     if(registrado == 0){
@@ -82,14 +87,17 @@ int guardaUsuario(char* usuario){
 
 char* searchUsers(char* codigoPostal, int* num_personas) {
     int fdUsuarios;
-    char* buffer, *c_postal, *id, *data, *dataFinal;
+    char *buffer, *c_postal, *id, *data, *dataFinal;
     int num_usuarios = 0, sizeData = 1;
 
     *num_personas = 0;
     data = (char*)malloc(sizeof(char));
+
     fdUsuarios = open("lista.txt", O_RDONLY);
     buffer = read_until(fdUsuarios, '\n');
     num_usuarios = atoi(buffer);
+
+    free(buffer);
 
     for(int i = 0; i < num_usuarios; i++){
         buffer = read_until(fdUsuarios, '*');
@@ -104,12 +112,18 @@ char* searchUsers(char* codigoPostal, int* num_personas) {
             data = (char*)realloc(data, sizeof(char) * sizeData);
            strcat(data, buffer);
         }
+
+        free(c_postal);
+        free(id);
     }
+
     sprintf(buffer, "%d*", *num_personas);
     dataFinal = (char*)malloc(sizeof(char)*strlen(data) + strlen(buffer) +1);
     strcpy(dataFinal, buffer);
     strcat(dataFinal, data);
     dataFinal[strlen(dataFinal)-1] = '\0';
+
+    free(buffer);
     free(data);
     close(fdUsuarios);
 
@@ -133,7 +147,6 @@ void getMD5Sum(char photoName[10], char checksum[33]) {
         case 0: //ESTEM AL FILL
             close(fd[0]);
             dup2(fd[1], 1);
-            dup2(fd[1], 2);
             execlp("md5sum", "md5sum", photoName, NULL);
             break;
         default://ESTEM AL PARE
@@ -213,6 +226,7 @@ void *clientController(void *arg) {
         
         if (trama.tipo == 'C' && logged == 0) {
             //login
+            int i, j;
             logged = 1;
             user.id = guardaUsuario(trama.data);
 
@@ -221,26 +235,19 @@ void *clientController(void *arg) {
             createTramaSend(buffer, 'O', data);
             write(*clienteFD, buffer, 256);
 
-            char *aux = (char *) malloc(sizeof(char) * (strlen(trama.data)+1));
-            strcpy(aux, trama.data);
-
-
-            //cambiar el strtok
-            char *token = strtok(aux, "*");
-
-            user.nombre = (char *) malloc(sizeof(char) * strlen(token));
-            user.c_postal = (char *) malloc(sizeof(char));
-            strcpy(user.nombre, token);
-
-            while(token != NULL) {
-                token = strtok(NULL, "*");
-                if (token != NULL) {
-                    user.c_postal = (char *) realloc(user.c_postal, sizeof(char) * strlen(token));
-                    strcpy(user.c_postal, token);
-                }
+            j = 0;
+            for (i = 0; trama.data[i] != '*'; i++) {
+                user.nombre[j] = trama.data[i];
+                j++;
             }
+            user.nombre[j] = '\0';
 
-            free(token);
+            j = 0;
+            for (i++; trama.data[i] != '\0'; i++) {
+                user.c_postal[j] = trama.data[i];
+                j++;
+            }
+            user.c_postal[j] = '\0';
 
             sprintf(buffer, "Rebut login %s %s\n", user.nombre, user.c_postal);
             print(buffer);
@@ -248,29 +255,27 @@ void *clientController(void *arg) {
             print(buffer);
             print("Enviada resposta\n\n");
 
+            //exclusion mutua
             actualUsers[num_actuals] = (char *) malloc(sizeof(char) * (strlen(trama.data)+1));
             strcpy(actualUsers[num_actuals], trama.data);
             num_actuals++;
-            if (num_actuals >= actual_size) {
-                actualUsers = (char **) realloc(actualUsers, sizeof(char *) * num_actuals);
-                actual_size = num_actuals;
-            }
+            actualUsers = (char **) realloc(actualUsers, sizeof(char *) * (num_actuals + 1));
+
         } else if (trama.tipo == 'S' && logged == 1) {
             //search
             int num_personas, j, i;
-            char* nombreAux, *idAux, *dataAux;
-            char* auxC = (char *) malloc(sizeof(char));;
+            char *nombreAux, *idAux, *dataAux;
+            char *auxC = (char *) malloc(sizeof(char));
             Usuario userAux;
 
             j = 0;
-            userAux.nombre = (char *) malloc(sizeof(char));
-            userAux.c_postal = (char *) malloc(sizeof(char));
 
             for(i = 0; trama.data[i] != '*'; i++){
             //Copiamos el nombre del usuario
                 userAux.nombre[j] = trama.data[i];
                 j++;    
             }
+            userAux.nombre[j] = '\0';
             j = 0;
             for(i++; trama.data[i] != '*'; i++){
                 //Copiamos el id del usuario
@@ -284,6 +289,7 @@ void *clientController(void *arg) {
                 userAux.c_postal[j] = trama.data[i];
                 j++;
             }
+            userAux.c_postal[j] = '\0';
             
             bzero(&auxC,strlen(auxC));
             sprintf(auxC, "Rebut search %s de %s %d\n", userAux.c_postal, userAux.nombre, userAux.id);
@@ -305,12 +311,14 @@ void *clientController(void *arg) {
                     for(j++; dataAux[j] != '*' && dataAux[j] != '\0'; j++){
                         nombreAux[i] = dataAux[j];
                         i++;
+                        nombreAux = (char *) realloc(nombreAux, sizeof(char*) * (i+1));
                     }
                     nombreAux[i] = '\0';
                     i = 0;
                     for(j++; dataAux[j] != '*' && dataAux[j] != '\0'; j++){
                         idAux[i] = dataAux[j];
                         i++;
+                        idAux = (char *) realloc(idAux, sizeof(char*) * (i+1));
                     }
                     
                     sprintf(auxC, "%s %s\n", idAux, nombreAux);
@@ -318,10 +326,20 @@ void *clientController(void *arg) {
                 }
             }
 
+            if (nombreAux != NULL)
+                free(nombreAux);
+            
+            if (idAux != NULL)
+                free(idAux);
+            
             bzero(&buffer, sizeof(buffer));
             createTramaSend(buffer, 'L', dataAux);
             write(*clienteFD, buffer, 256);
             print("Enviada resposta\n");
+
+            if (dataAux != NULL)
+                free(dataAux);
+
         } else if (trama.tipo == 'F' && logged == 1) {
             //send
             int i, j, fdImg, size, vueltas, resto;
@@ -483,10 +501,9 @@ void *clientController(void *arg) {
 
         } else if (trama.tipo == 'Q' && logged == 1) {
             //logout
-            for (int i = 0; i < actual_size; i++) {
+            for (int i = 0; i < num_actuals; i++) {
                 if (strcmp(actualUsers[i], trama.data) == 0) {
                     bzero(&actualUsers[i], sizeof(actualUsers[i]));
-                    num_actuals--;
                     break;
                 }
             }
@@ -506,15 +523,13 @@ void *clientController(void *arg) {
 
     }
 
-    //exclusion mutua
+    close(*clienteFD);
     for (int i = 0; i < connectedFremens; i++) {
-        if (*clienteFD == fdClients[i]) {
+        if (fdClients[i] == *clienteFD) {
             fdClients[i] = -1;
             break;
         }
     }
-
-    close(*clienteFD);
     pthread_cancel(pthread_self());
     pthread_detach(pthread_self());
 
@@ -524,6 +539,7 @@ void *clientController(void *arg) {
 void signalHandler(int signum) {
     if (signum == SIGINT) {
         //vaciar memoria
+        
         for (int i = 0; i < connectedFremens; i++) {
             if (fdClients[i] != -1) {
                 pthread_cancel(threads[i]);
@@ -533,8 +549,19 @@ void signalHandler(int signum) {
             }
         }
 
+        for (int i = 0; i < num_actuals; i++) {
+            if (actualUsers[i] != NULL) {
+                free(actualUsers[i]);
+            }
+        }
+
+        free(actualUsers);
         free(fdClients);
         free(threads);
+        free(datos.ip);
+        free(datos.puerto);
+        free(datos.directorio);
+        close(servidorFD);
 
         signal(SIGINT, SIG_DFL);
         raise(SIGINT);
@@ -542,13 +569,12 @@ void signalHandler(int signum) {
 }
 
 int main(int argc, char* argv[]) {
-    Conexion datos;
     struct sockaddr_in servidor;
-    int servidorFD;
 
     connectedFremens = 0; //inicializar de otra manera
     num_actuals = 0;
-    actual_size = 0;
+
+    signal(SIGINT, signalHandler);
 
     if(argc != 2){
         print("Error. Numero de argumentos no es correcto!\n");
@@ -562,6 +588,7 @@ int main(int argc, char* argv[]) {
         print("Error creant el socket\n");
         exit(0);
     }
+
 
     bzero(&servidor, sizeof(servidor));
     servidor.sin_family = AF_INET;
@@ -604,8 +631,9 @@ int main(int argc, char* argv[]) {
 
             if(controlThread < 0){
                 print("Error Thread\n");
+            } else {
+                connectedFremens++;
             }
-            connectedFremens++;
         }
     }
 }
