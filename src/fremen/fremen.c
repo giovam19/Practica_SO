@@ -19,7 +19,10 @@
 #include <signal.h>
 #include <ctype.h>
 #include <netdb.h>
+#include <dirent.h>
+#include <pthread.h>
 #include "ConfigFichero.h"
+#include "semaphore_v2.h"
 
 #define print(x) write(1, x, strlen(x))
 
@@ -40,6 +43,8 @@ Usuario user;
 char **argumentos;
 int num_argumentos;
 int socketFD;
+pthread_t removeThread;
+semaphore semImage;
 
 Trama fillTrama(char *buffer) {
     Trama trama;
@@ -108,6 +113,26 @@ char *getArgumentos(char* str){
     return argumentos[0];
 }
 
+void createTramaSend(char *trama, char tipo, char *data) {
+    int i, j;
+    char origen[15] = "FREMEN\0\0\0\0\0\0\0\0\0";
+
+    j = 0;
+    for (i = 0; i < 15; i++) {
+        trama[i] = origen[j];
+        j++;
+    }
+
+    trama[15] = tipo;
+
+    j = 0;
+    for (i = 16; i < 256; i++) {
+        trama[i] = data[j];
+        j++;
+    }
+
+}
+
 void comandoLinux(char *comando, char **args) {
     int pid;
     int status;
@@ -128,26 +153,6 @@ void comandoLinux(char *comando, char **args) {
             wait(NULL);
             break;
     }
-}
-
-void createTramaSend(char *trama, char tipo, char *data) {
-    int i, j;
-    char origen[15] = "FREMEN\0\0\0\0\0\0\0\0\0";
-
-    j = 0;
-    for (i = 0; i < 15; i++) {
-        trama[i] = origen[j];
-        j++;
-    }
-
-    trama[15] = tipo;
-
-    j = 0;
-    for (i = 16; i < 256; i++) {
-        trama[i] = data[j];
-        j++;
-    }
-
 }
 
 void getMD5Sum(char *photoName, char checksum[33]) {
@@ -184,6 +189,44 @@ void getMD5Sum(char *photoName, char checksum[33]) {
             break;
     }
 }
+
+void deleteImages() {
+    DIR *folder;
+    struct dirent *entry;
+    int files = 0;
+    char **args;
+
+    args = (char **) malloc(sizeof(char *) * 4);
+
+    args[0] = (char *) malloc(sizeof(char) * (strlen("rm")+1));
+    args[1] = (char *) malloc(sizeof(char) * (strlen("./fremen/xxx.jpg")+1));
+    args[2] = NULL;
+
+    strcpy(args[0], "rm");
+
+    folder = opendir("./fremen/");
+    if(folder == NULL)
+    {
+        print("Unable to read directory\n");
+    }
+
+    while( (entry=readdir(folder)) ){
+        files++;
+        if (files > 2) {
+            sprintf(args[1], "./fremen/%s", entry->d_name);
+            comandoLinux("rm", args);
+        }
+    }
+
+    closedir(folder);
+
+    print("foto eliminada\n");
+
+    free(args[0]);
+    free(args[1]);
+    free(args);
+}
+
 
 void loginAtreides() {
     struct sockaddr_in cliente;
@@ -264,39 +307,46 @@ void searchInServer() {
         nombreAux = (char*) malloc(sizeof(char));
         idAux = (char*) malloc(sizeof(char));
         i = 0;
-        
-        printf("llego 1\n");
-        printf("%s, %s\n", dataAux, trama.data);
+       
         for(j = 0; trama.data[j] != '*'; j++){
             dataAux[j] = trama.data[j];
         }
-
-        printf("llego 2\n");
+        dataAux[j] = '\0';
         
         num_personas = atoi(dataAux);
         sprintf(dataAux, "Hi ha %d persones humanes a %s.\n", num_personas, argumentos[1]);
         print(dataAux);
         
-        printf("llego 3\n");
-        
         for(int k = 0; k < num_personas; k++) {
             i = 0;
+
             for(j++; trama.data[j] != '*' && trama.data[j] != '\0'; j++){
                 nombreAux[i] = trama.data[j];
                 i++;
-                //nombreAux = (char*) realloc(nombreAux, sizeof(char) * (i+1));
+                nombreAux = (char*) realloc(nombreAux, sizeof(char) * (i+1));
             }
             nombreAux[i] = '\0';
             i = 0;
             for(j++; trama.data[j] != '*' && trama.data[j] != '\0'; j++){
                 idAux[i] = trama.data[j];
                 i++;
-                //idAux = (char*) realloc(idAux, sizeof(char) * (i+1));
-            }     
+                idAux = (char*) realloc(idAux, sizeof(char) * (i+1));
+            }
+            idAux[i] = '\0';
             sprintf(dataAux, "%s %s\n", idAux, nombreAux);
             print(dataAux);
+            if(trama.data[j] == '\0' && k+1 < num_personas){
+                bzero(&buffer, 256);
+                read(socketFD, buffer, 256);
+
+                trama = fillTrama(buffer);
+                j = -1;
+                i = 0;
+            }
         }
 
+        free(nombreAux);
+        free(idAux);
         free(dataAux);
 
     } else {
@@ -305,12 +355,14 @@ void searchInServer() {
 }
 
 void sendImage() {
-    char checksum5[33], buffer[256], data[240];
+    char checksum5[33], buffer[256], data[240], imagen[100];
     int fdImg, size, vueltas, resto;
     struct stat st;
     Trama trama;
 
-    fdImg = open(argumentos[1], O_RDONLY);
+    sprintf(imagen, "%s/%s", datos.directorio, argumentos[1]);
+
+    fdImg = open(imagen, O_RDONLY);
 
     if (fdImg < 0) {
         print("Error abriendo Imagen\n");
@@ -319,7 +371,7 @@ void sendImage() {
 
     //calculamos md5sum
     bzero(&checksum5, 32);
-    getMD5Sum(argumentos[1], checksum5);
+    getMD5Sum(imagen, checksum5);
 
     //calculamos mida del archivo
     fstat(fdImg, &st);
@@ -382,7 +434,7 @@ void getPhoto() {
     } else {
         //found
         int i, j, fdImg, size, vueltas, resto;
-        char foto[31], checksum[33], thisChecksum[33];
+        char foto[31], checksum[33], thisChecksum[33], imagen[100];
         
         bzero(&foto, 31);
         j = 0;
@@ -406,7 +458,10 @@ void getPhoto() {
             j++;
         }
 
-        fdImg = open(foto, O_CREAT|O_WRONLY|O_TRUNC, 00777);
+        bzero(&imagen, 100);
+        sprintf(imagen, "%s/%s", datos.directorio, foto);
+
+        fdImg = open(imagen, O_CREAT|O_WRONLY|O_TRUNC, 00777);
         if (fdImg < 0) {
             print("Error creando la imagen\n");
         } else {
@@ -429,7 +484,7 @@ void getPhoto() {
 
             close(fdImg);
 
-            getMD5Sum(foto, thisChecksum);
+            getMD5Sum(imagen, thisChecksum);
 
             if (strcmp(checksum, thisChecksum) == 0) {
                 bzero(&data, 240);
@@ -467,6 +522,12 @@ void freeAllMemory() {
             free(user.c_postal);
         if (user.id != NULL)
             free(user.id);
+
+        pthread_cancel(removeThread);
+        pthread_join(removeThread, NULL);
+        pthread_detach(removeThread);
+
+		SEM_destructor(&semImage);
 }
 
 void logoutServer() {
@@ -497,7 +558,7 @@ void signalHandler(int signum) {
     }
 }
 
-void menuComandos(char *str) {
+void menuComandos(char *str, int *logged) {
 
     char *input = getArgumentos(str);
 
@@ -508,6 +569,7 @@ void menuComandos(char *str) {
             print("Comanda KO. Massa parametres\n");
         } else {
             loginAtreides();
+            *logged = 1;
         }
     } else if (strcasecmp(input, "search") == 0) { //Search
         if (num_argumentos - 1 < 1) {
@@ -515,7 +577,11 @@ void menuComandos(char *str) {
         } else if (num_argumentos - 1 > 1) {
             print("Comanda KO. Massa parametres\n");
         } else {
-            searchInServer();
+            if (*logged == 1) {
+                searchInServer();
+            } else {
+                print("Es necesario hacer login!\n");
+            }
         }
     } else if (strcasecmp(input, "send") == 0) { //Send
         if (num_argumentos - 1 < 1) {
@@ -523,7 +589,13 @@ void menuComandos(char *str) {
         } else if (num_argumentos - 1 > 1) {
             print("Comanda KO. Massa parametres\n");
         } else {
-            sendImage();
+            if (*logged == 1) {
+                SEM_wait(&semImage);
+                sendImage();
+                SEM_signal(&semImage);
+            } else {
+                print("Es necesario hacer login!\n");
+            }
         }
     } else if (strcasecmp(input, "photo") == 0) { //Photo
         if (num_argumentos - 1 < 1) {
@@ -531,7 +603,13 @@ void menuComandos(char *str) {
         } else if (num_argumentos - 1 > 1) {
             print("Comanda KO. Massa parametres\n");
         } else {
-            getPhoto();
+            if (*logged == 1) {
+                SEM_wait(&semImage);
+                getPhoto();
+                SEM_signal(&semImage);
+            } else {
+                print("Es necesario hacer login!\n");
+            }
         }
     } else if (strcasecmp(input, "logout") == 0) { //Logout
         if (num_argumentos - 1 > 0) {
@@ -551,9 +629,21 @@ void menuComandos(char *str) {
     
 }
 
+void *removeImages() {
+    while(1) {
+        sleep(datos.tiempo);
+        SEM_wait(&semImage);
+        deleteImages();
+        SEM_signal(&semImage);
+    }
+
+    return NULL;
+}
+
 int main(int argc, char* argv[]) {
     char input[40];
     int n;
+    int logged = 0;
 
     argumentos = NULL;
     num_argumentos = 0;
@@ -568,7 +658,17 @@ int main(int argc, char* argv[]) {
     }
 
 	datos = leerFichero(argv[1]);
+    datos.directorio[strlen(datos.directorio)-2] = '\0';
+
     signal(SIGINT, signalHandler);
+    int controlAlarm = pthread_create(&removeThread, NULL, removeImages, NULL);
+    if (controlAlarm < 0) {
+        print("Error creando Thread alarma\n");
+        exit(0);
+    }
+
+    SEM_constructor(&semImage);
+	SEM_init(&semImage, 1);
 
     print("Benvingut a Fremen\n");
 
@@ -577,7 +677,7 @@ int main(int argc, char* argv[]) {
         print("$ ");
         n = read(0, input, 40);
         input[n-1] = '\0';
-        menuComandos(input);
+        menuComandos(input, &logged);
     }
     
     return 0;

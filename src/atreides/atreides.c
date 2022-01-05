@@ -40,6 +40,10 @@ Conexion datos;
 char **actualUsers;
 int num_actuals, connectedFremens, *fdClients, servidorFD;
 pthread_t *threads;
+pthread_mutex_t images_mtx = PTHREAD_MUTEX_INITIALIZER,
+                localUsers_mtx = PTHREAD_MUTEX_INITIALIZER,
+                fdclients_mtx = PTHREAD_MUTEX_INITIALIZER,
+                lista_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 int guardaUsuario(char usuario[240]){
     char *buffer, *id;
@@ -88,42 +92,55 @@ int guardaUsuario(char usuario[240]){
 char* searchUsers(char* codigoPostal, int* num_personas) {
     int fdUsuarios;
     char *buffer, *c_postal, *id, *data, *dataFinal;
-    int num_usuarios = 0, sizeData = 1;
+    int num_usuarios = 0, sizeData = 1, f;
 
+    f = 0;
     *num_personas = 0;
-    data = (char*)malloc(sizeof(char));
+    data = (char*)malloc(sizeof(char)+1);
 
     fdUsuarios = open("lista.txt", O_RDONLY);
     buffer = read_until(fdUsuarios, '\n');
     num_usuarios = atoi(buffer);
-
     free(buffer);
-
+    
     for(int i = 0; i < num_usuarios; i++){
         buffer = read_until(fdUsuarios, '*');
         c_postal = read_until(fdUsuarios, '&');
         id = read_until(fdUsuarios, '\n');
         if(strcmp(c_postal, codigoPostal) == 0) {
             *num_personas = (*num_personas) + 1;
-            strcat(buffer, "*");
+            buffer = (char*)realloc(buffer, sizeof(char)*(strlen(buffer)+ strlen(id)+3));
+            strcat(buffer,"*");
             strcat(buffer,id);
             strcat(buffer,"*");
             sizeData = sizeData + strlen(buffer) + strlen(id);
             data = (char*)realloc(data, sizeof(char) * sizeData);
-           strcat(data, buffer);
+            if(f == 0){
+                strcpy(data, buffer);
+            } else {
+                strcat(data, buffer);
+            }
+            f++;
         }
-
+        free(buffer);
         free(c_postal);
         free(id);
     }
+    if (*num_personas > 0) {
+        buffer = (char *) malloc(sizeof(char) * 10);
+        sprintf(buffer, "%d*", *num_personas);
+        dataFinal = (char*)malloc(sizeof(char)*(strlen(data) + strlen(buffer) +1));
+        strcpy(dataFinal, buffer);
+        strcat(dataFinal, data);
+        dataFinal[strlen(dataFinal)-1] = '\0';
+        free(buffer);
+    } else {
+        dataFinal = (char*) malloc(sizeof(char) * 3);
+        dataFinal[0] = '0';
+        dataFinal[1] = '*';
+        dataFinal[2] = '\0';
+    }
 
-    sprintf(buffer, "%d*", *num_personas);
-    dataFinal = (char*)malloc(sizeof(char)*strlen(data) + strlen(buffer) +1);
-    strcpy(dataFinal, buffer);
-    strcat(dataFinal, data);
-    dataFinal[strlen(dataFinal)-1] = '\0';
-
-    free(buffer);
     free(data);
     close(fdUsuarios);
 
@@ -208,12 +225,9 @@ Trama fillTrama(char *buffer) {
 
 void *clientController(void *arg) {
     int *clienteFD = (int *) arg;
-    int logged;
     char buffer[256], data[240];
     Trama trama;
     Usuario user;
-
-    logged = 0;
 
     while(1) {
         int size = read(*clienteFD, buffer, 256);
@@ -224,11 +238,12 @@ void *clientController(void *arg) {
         trama = fillTrama(buffer);
         bzero(&buffer, sizeof(buffer));
         
-        if (trama.tipo == 'C' && logged == 0) {
+        if (trama.tipo == 'C') {
             //login
             int i, j;
-            logged = 1;
+            pthread_mutex_lock(&lista_mtx);
             user.id = guardaUsuario(trama.data);
+            pthread_mutex_unlock(&lista_mtx);
 
             bzero(&data, 240);
             sprintf(data, "%d", user.id);
@@ -256,20 +271,21 @@ void *clientController(void *arg) {
             print("Enviada resposta\n\n");
 
             //exclusion mutua
+            pthread_mutex_lock(&localUsers_mtx);
             actualUsers[num_actuals] = (char *) malloc(sizeof(char) * (strlen(trama.data)+1));
             strcpy(actualUsers[num_actuals], trama.data);
             num_actuals++;
             actualUsers = (char **) realloc(actualUsers, sizeof(char *) * (num_actuals + 1));
+            pthread_mutex_unlock(&localUsers_mtx);
 
-        } else if (trama.tipo == 'S' && logged == 1) {
+        } else if (trama.tipo == 'S') {
             //search
             int num_personas, j, i;
             char *nombreAux, *idAux, *dataAux;
             char *auxC = (char *) malloc(sizeof(char));
             Usuario userAux;
-
+            
             j = 0;
-
             for(i = 0; trama.data[i] != '*'; i++){
             //Copiamos el nombre del usuario
                 userAux.nombre[j] = trama.data[i];
@@ -277,12 +293,18 @@ void *clientController(void *arg) {
             }
             userAux.nombre[j] = '\0';
             j = 0;
+
             for(i++; trama.data[i] != '*'; i++){
                 //Copiamos el id del usuario
                 auxC[j] = trama.data[i];
                 j++;
+                auxC = (char *) realloc(auxC, sizeof(char) * (j+1));
+
             }
+            auxC[j] = '\0';
             userAux.id = atoi(auxC);
+            free(auxC);
+
             j = 0;
             for(i++; trama.data[i] != '\0'; i++){
                 //Copiamos el codigo postal
@@ -291,64 +313,119 @@ void *clientController(void *arg) {
             }
             userAux.c_postal[j] = '\0';
             
-            bzero(&auxC,strlen(auxC));
+            auxC = (char *) malloc(sizeof(char)*(30+strlen(userAux.c_postal)+strlen(userAux.nombre)));
             sprintf(auxC, "Rebut search %s de %s %d\n", userAux.c_postal, userAux.nombre, userAux.id);
             print(auxC);
+            pthread_mutex_lock(&lista_mtx);
             dataAux = searchUsers(userAux.c_postal, &num_personas);
+            pthread_mutex_unlock(&lista_mtx);
             print("Feta la cerca\n");
+            free(auxC);
+            auxC = (char *) malloc(sizeof(char)*(38+strlen(userAux.c_postal)));
             sprintf(auxC, "Hi ha %d persones humanes a %s\n", num_personas, userAux.c_postal);
             print(auxC);
+            free(auxC);
+
             
-            nombreAux = (char*) malloc(sizeof(char));
-            idAux = (char*) malloc(sizeof(char));
             i = 0;
 
             if (num_personas > 0) {
                 for(j = 0; dataAux[j] != '*'; j++){}
 
                 for(int k = 0; k < num_personas; k++) {
+                    nombreAux = (char*) malloc(sizeof(char));
+                    idAux = (char*) malloc(sizeof(char));
                     i = 0;
                     for(j++; dataAux[j] != '*' && dataAux[j] != '\0'; j++){
                         nombreAux[i] = dataAux[j];
                         i++;
-                        nombreAux = (char *) realloc(nombreAux, sizeof(char*) * (i+1));
+                        nombreAux = (char *) realloc(nombreAux, sizeof(char) * (i+1));   
+
                     }
                     nombreAux[i] = '\0';
                     i = 0;
+
                     for(j++; dataAux[j] != '*' && dataAux[j] != '\0'; j++){
                         idAux[i] = dataAux[j];
                         i++;
-                        idAux = (char *) realloc(idAux, sizeof(char*) * (i+1));
+                        idAux = (char *) realloc(idAux, sizeof(char) * (i+1));
                     }
-                    
-                    sprintf(auxC, "%s %s\n", idAux, nombreAux);
-                    print(auxC);
+                    idAux[i] = '\0';
+                    print(idAux);
+                    print(" ");
+                    print(nombreAux);
+                    print("\n");
+                    free(nombreAux);
+                    free(idAux); 
                 }
+
+                bzero(&buffer, sizeof(buffer));
+                bzero(&data, sizeof(data));
+                
+                char aux[240];
+                int datos = 0;
+                j = 0;
+                for(i = 0; dataAux[i] != '*'; i++){
+                    aux[i] = dataAux[i];
+                    j++;
+                }
+                aux[i] = dataAux[i];
+                aux[i+1] = '\0';
+                strcpy(data,aux);
+                j = 0;
+                i++;
+                while(dataAux[i] != '\0') {    
+                    j = 0;
+            
+                    for(; datos != 2 && dataAux[i] != '\0'; i++){
+                        if(dataAux[i] == '*') datos++;
+                        aux[j] = dataAux[i];
+                        j++;
+                    }
+                    datos = 0;
+                    aux[j] = '\0';
+
+                    if(strlen(aux) + strlen(data) < 240){
+                        strcat(data, aux);
+                    
+                    } else {
+                        data[strlen(data)-1] = '\0';
+                        createTramaSend(buffer, 'L', data);
+                        write(*clienteFD, buffer, 256);
+                        bzero(&data, sizeof(data));
+                        bzero(&buffer, sizeof(buffer));
+                        strcpy(data,aux);
+                    }
+                    bzero(&aux, sizeof(aux));
+                }
+                
+                createTramaSend(buffer, 'L', data);
+                write(*clienteFD, buffer, 256);
+                print("Enviada resposta\n\n");
+                bzero(&data, sizeof(data));
+                bzero(&buffer, sizeof(buffer));
+
+            } else {
+                bzero(&data, 240);
+                sprintf(data, "0*");
+                createTramaSend(buffer, 'L', data);
+                write(*clienteFD, buffer, 256);
+                print("Enviada resposta\n\n");
+                bzero(&data, sizeof(data));
+                bzero(&buffer, sizeof(buffer));
             }
-
-            if (nombreAux != NULL)
-                free(nombreAux);
             
-            if (idAux != NULL)
-                free(idAux);
             
-            bzero(&buffer, sizeof(buffer));
-            createTramaSend(buffer, 'L', dataAux);
-            write(*clienteFD, buffer, 256);
-            print("Enviada resposta\n");
-
             if (dataAux != NULL)
                 free(dataAux);
 
-        } else if (trama.tipo == 'F' && logged == 1) {
+        } else if (trama.tipo == 'F') {
             //send
             int i, j, fdImg, size, vueltas, resto;
             char foto[30], checksum[33], thisChecksum[33], nomFoto[10];
 
             bzero(&foto, 30);
             bzero(&checksum, 33);
-
-            //usar mutex para los ficheros
 
             j = 0;
             for (i = 0; trama.data[i] != '*'; i++) {
@@ -370,16 +447,18 @@ void *clientController(void *arg) {
                 j++;
             }
 
-            bzero(&nomFoto, sizeof(nomFoto));
+            bzero(&nomFoto, 10);
             sprintf(nomFoto, "%d.jpg", user.id);
 
-            bzero(&buffer, sizeof(buffer));
+            bzero(&buffer, 256);
             sprintf(buffer, "Rebut send %s de %s %d\n", foto, user.nombre, user.id);
             print(buffer);
 
+            pthread_mutex_lock(&images_mtx);
             fdImg = open(nomFoto, O_CREAT|O_WRONLY|O_TRUNC, 00777);
             if (fdImg < 0) {
                 print("Error creando la imagen\n");
+                pthread_mutex_unlock(&images_mtx);
             } else {
                 vueltas = size / 240;
                 resto = size - (vueltas * 240);
@@ -421,8 +500,9 @@ void *clientController(void *arg) {
                     createTramaSend(buffer, 'R', data);
                     write(*clienteFD, buffer, 256);
                 }
+                pthread_mutex_unlock(&images_mtx);
             }
-        } else if (trama.tipo == 'P' && logged == 1) {
+        } else if (trama.tipo == 'P') {
             //photo
             char checksum[33], nombre[30], dataAux[5];
             struct stat st;
@@ -440,6 +520,7 @@ void *clientController(void *arg) {
             sprintf(buffer, "Rebut photo %s de %s %d\n", dataAux, user.nombre, user.id);
             print(buffer);
 
+            pthread_mutex_lock(&images_mtx);
             int imgFD = open(nombre, O_RDONLY);
 
             if (imgFD < 0) {
@@ -449,7 +530,8 @@ void *clientController(void *arg) {
                 sprintf(data, "FILE NOT FOUND");
                 createTramaSend(buffer, 'F', data);
                 write(*clienteFD, buffer, 256);
-                print("Enviada resposta\nEsperant connexions...\n\n");
+                print("Enviada resposta\n\n");
+                pthread_mutex_unlock(&images_mtx);
             } else {
                 bzero(&buffer, 256);
                 sprintf(buffer, "Enviament %s\n", nombre);
@@ -497,16 +579,20 @@ void *clientController(void *arg) {
                 } else if (trama.tipo == 'R') {
                     print("Image KO.\n");
                 }
+                pthread_mutex_unlock(&images_mtx);
             }
 
-        } else if (trama.tipo == 'Q' && logged == 1) {
+        } else if (trama.tipo == 'Q') {
             //logout
+            pthread_mutex_lock(&localUsers_mtx);
             for (int i = 0; i < num_actuals; i++) {
                 if (strcmp(actualUsers[i], trama.data) == 0) {
-                    bzero(&actualUsers[i], sizeof(actualUsers[i]));
+                    free(actualUsers[i]);
+                    num_actuals--;
                     break;
                 }
             }
+            pthread_mutex_unlock(&localUsers_mtx);
 
             sprintf(buffer, "Rebut logout de  %s %s\n", user.nombre, user.c_postal);
             print(buffer);
@@ -524,12 +610,15 @@ void *clientController(void *arg) {
     }
 
     close(*clienteFD);
+    pthread_mutex_lock(&fdclients_mtx);
     for (int i = 0; i < connectedFremens; i++) {
         if (fdClients[i] == *clienteFD) {
             fdClients[i] = -1;
             break;
         }
     }
+    pthread_mutex_unlock(&fdclients_mtx);
+
     pthread_cancel(pthread_self());
     pthread_detach(pthread_self());
 

@@ -35,8 +35,9 @@
 *.i*86
 *.x86_64
 *.hex
-fremen
-atreides
+Fremen
+Atreides
+Harkonen
 
 # Debug files
 *.dSYM/
