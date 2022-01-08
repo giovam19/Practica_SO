@@ -8,6 +8,7 @@
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <sys/stat.h>
+#include <sys/poll.h>
 #include <sys/wait.h>
 #include <sys/un.h>
 #include <stdio.h>
@@ -41,10 +42,9 @@ typedef struct {
 Configuracion datos;
 Usuario user;
 char **argumentos;
-int num_argumentos;
-int socketFD;
-pthread_t removeThread;
-semaphore semImage;
+int num_argumentos, socketFD, logged;
+pthread_t removeThread, pollThread;
+semaphore semImage, semLogged, semSocket;
 
 Trama fillTrama(char *buffer) {
     Trama trama;
@@ -220,13 +220,65 @@ void deleteImages() {
 
     closedir(folder);
 
-    print("foto eliminada\n");
-
     free(args[0]);
     free(args[1]);
     free(args);
 }
 
+void *pollingFunct() {
+    int i;
+    char buf[256], data[240];
+    struct pollfd pfds[2];
+
+    bzero(&data, 240);
+    while(1) {
+        pfds[0].fd = 0;
+        pfds[0].events = POLLIN;
+        SEM_wait(&semSocket);
+        pfds[1].fd = socketFD;
+        pfds[1].events = POLLIN;
+        SEM_signal(&semSocket);
+
+        poll(pfds, 2, -1);
+        
+        if (pfds[1].revents & POLLIN) {
+            SEM_wait(&semSocket);
+            createTramaSend(buf, 'G', data);
+            write(socketFD, buf, 256);
+            i = read(socketFD, buf, 256);
+            if (i != 256) {
+                close(socketFD);
+                socketFD = -1;
+                if (user.nombre != NULL) {
+                    free(user.nombre);
+                    user.nombre = NULL;
+                }
+                if (user.c_postal != NULL) {
+                    free(user.c_postal);
+                    user.c_postal = NULL;
+                }
+                if (user.id != NULL) {
+                    free(user.id);
+                    user.id = NULL;
+                }
+                SEM_wait(&semLogged);
+                logged = 0;
+                SEM_signal(&semLogged);
+                print("Perdida de conexion con Atreides.\n");
+                SEM_signal(&semSocket);
+                break;
+            } else {
+                SEM_signal(&semSocket);
+            }
+        }
+    }
+
+    //terminar el thread;
+    pthread_cancel(pthread_self());
+    pthread_detach(pthread_self());
+
+    return NULL;
+}
 
 void loginAtreides() {
     struct sockaddr_in cliente;
@@ -280,6 +332,13 @@ void loginAtreides() {
         print("Ara estàs connectat a Atreides.\n");
         user.id = (char *) malloc(sizeof(char) * (strlen(trama.data)+1));
         strcpy(user.id, trama.data);
+        logged = 1;
+        //iniciar polling
+        int controlPoll = pthread_create(&pollThread, NULL, pollingFunct, NULL);
+        if (controlPoll < 0) {
+            print("Error creando Thread polling\n");
+        }
+
     } else {
         print("Error en Login.\n");
     }
@@ -527,7 +586,13 @@ void freeAllMemory() {
         pthread_join(removeThread, NULL);
         pthread_detach(removeThread);
 
+        pthread_cancel(pollThread);
+        pthread_join(pollThread, NULL);
+        pthread_detach(pollThread);
+
 		SEM_destructor(&semImage);
+		SEM_destructor(&semSocket);
+		SEM_destructor(&semLogged);
 }
 
 void logoutServer() {
@@ -535,13 +600,13 @@ void logoutServer() {
     if (socketFD > 0) {
         char buffer[256], data[240];
 
+
         bzero(&data, 240);
         sprintf(data, "%s*%s", user.nombre, user.c_postal);
         createTramaSend(buffer, 'Q', data);
         write(socketFD, buffer, 256);
         close(socketFD);
     }
-
 }
 
 void signalHandler(int signum) {
@@ -558,18 +623,24 @@ void signalHandler(int signum) {
     }
 }
 
-void menuComandos(char *str, int *logged) {
+void menuComandos(char *str) {
 
     char *input = getArgumentos(str);
 
+    SEM_wait(&semLogged);
     if (strcasecmp(input, "login") == 0) { //Login
         if (num_argumentos - 1 < 2) {
             print("Comanda KO. Falta parametres\n");
         } else if (num_argumentos - 1 > 2) {
             print("Comanda KO. Massa parametres\n");
         } else {
-            loginAtreides();
-            *logged = 1;
+            if (logged == 0) {
+                SEM_wait(&semSocket);
+                loginAtreides();
+                SEM_signal(&semSocket);
+            } else {
+                print("Login ya hecho.\n");
+            }
         }
     } else if (strcasecmp(input, "search") == 0) { //Search
         if (num_argumentos - 1 < 1) {
@@ -577,8 +648,10 @@ void menuComandos(char *str, int *logged) {
         } else if (num_argumentos - 1 > 1) {
             print("Comanda KO. Massa parametres\n");
         } else {
-            if (*logged == 1) {
+            if (logged == 1) {
+                SEM_wait(&semSocket);
                 searchInServer();
+                SEM_signal(&semSocket);
             } else {
                 print("Es necesario hacer login!\n");
             }
@@ -589,10 +662,12 @@ void menuComandos(char *str, int *logged) {
         } else if (num_argumentos - 1 > 1) {
             print("Comanda KO. Massa parametres\n");
         } else {
-            if (*logged == 1) {
+            if (logged == 1) {
+                SEM_wait(&semSocket);
                 SEM_wait(&semImage);
                 sendImage();
                 SEM_signal(&semImage);
+                SEM_signal(&semSocket);
             } else {
                 print("Es necesario hacer login!\n");
             }
@@ -603,10 +678,12 @@ void menuComandos(char *str, int *logged) {
         } else if (num_argumentos - 1 > 1) {
             print("Comanda KO. Massa parametres\n");
         } else {
-            if (*logged == 1) {
+            if (logged == 1) {
+                SEM_wait(&semSocket);
                 SEM_wait(&semImage);
                 getPhoto();
                 SEM_signal(&semImage);
+                SEM_signal(&semSocket);
             } else {
                 print("Es necesario hacer login!\n");
             }
@@ -615,7 +692,9 @@ void menuComandos(char *str, int *logged) {
         if (num_argumentos - 1 > 0) {
             print("Comanda KO. Massa parametres\n");
         } else { //Linux
+            SEM_wait(&semSocket);
             logoutServer();
+            SEM_signal(&semSocket);
             freeAllMemory();
             print("Desconnectat d’Atreides. Dew!\n");
             exit(0);
@@ -626,6 +705,7 @@ void menuComandos(char *str, int *logged) {
         argumentos[num_argumentos-1] = (char *) NULL;
         comandoLinux(input, argumentos);
     }
+    SEM_signal(&semLogged);
     
 }
 
@@ -643,10 +723,11 @@ void *removeImages() {
 int main(int argc, char* argv[]) {
     char input[40];
     int n;
-    int logged = 0;
-
+    
+    logged = 0;
     argumentos = NULL;
     num_argumentos = 0;
+    socketFD = -1;
 
     user.nombre = NULL;
     user.c_postal = NULL;
@@ -668,7 +749,12 @@ int main(int argc, char* argv[]) {
     }
 
     SEM_constructor(&semImage);
+    SEM_constructor(&semSocket);
+    SEM_constructor(&semLogged);
+
 	SEM_init(&semImage, 1);
+	SEM_init(&semLogged, 1);
+	SEM_init(&semSocket, 1);
 
     print("Benvingut a Fremen\n");
 
@@ -677,7 +763,7 @@ int main(int argc, char* argv[]) {
         print("$ ");
         n = read(0, input, 40);
         input[n-1] = '\0';
-        menuComandos(input, &logged);
+        menuComandos(input);
     }
     
     return 0;

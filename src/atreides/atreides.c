@@ -644,12 +644,19 @@ void signalHandler(int signum) {
             }
         }
 
-        free(actualUsers);
-        free(fdClients);
-        free(threads);
-        free(datos.ip);
-        free(datos.puerto);
-        free(datos.directorio);
+        if (actualUsers != NULL)
+            free(actualUsers);
+        if (fdClients != NULL)
+            free(fdClients);
+        if (threads != NULL)
+            free(threads);
+        if (datos.ip != NULL)
+            free(datos.ip);
+        if (datos.puerto != NULL)
+            free(datos.puerto);
+        if (datos.directorio != NULL)
+            free(datos.directorio);
+        
         close(servidorFD);
 
         signal(SIGINT, SIG_DFL);
