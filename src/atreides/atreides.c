@@ -1,7 +1,11 @@
-/*
-    giovanni.vecchies
-    josue.terrazas
-*/
+/***********************************************
+*
+* @Proposit: Codigo fuente para el funcionamiento del servidor
+* @Autor/s: giovanni.vecchies - josue.terrazas
+* @Data creacio: 02/11/2021
+* @Data ultima modificacio: 10/01/2022
+*
+************************************************/
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -45,6 +49,13 @@ pthread_mutex_t images_mtx = PTHREAD_MUTEX_INITIALIZER,
                 fdclients_mtx = PTHREAD_MUTEX_INITIALIZER,
                 lista_mtx = PTHREAD_MUTEX_INITIALIZER;
 
+/***********************************************
+*
+* @Finalitat: Abrir archivo de texto que contendra el historico de todos los users que se han conectado y añadir uno nuevo
+* @Parametres: in: usuario = datos del usuario nuevo a añadir.
+* @Retorn: retorna el id asignado el nuevo usuario.
+*
+************************************************/
 int guardaUsuario(char usuario[240]){
     char *buffer, *id;
     int num_usuarios, id_user = -1;
@@ -89,6 +100,14 @@ int guardaUsuario(char usuario[240]){
     return id_user;
 }
 
+/***********************************************
+*
+* @Finalitat: Buscar en el archivo txt de usuarios las personas que coincidan con el codigo postal indicado.
+* @Parametres: in: codigoPostal = el codigo con el que se realizara la busqueda.
+*              out: num_personas = el numero total de personas encontradas.
+* @Retorn: Una cadena con las personas encontradas.
+*
+************************************************/
 char* searchUsers(char* codigoPostal, int* num_personas) {
     int fdUsuarios;
     char *buffer, *c_postal, *id, *data, *dataFinal;
@@ -147,6 +166,14 @@ char* searchUsers(char* codigoPostal, int* num_personas) {
     return dataFinal;
 }
 
+/***********************************************
+*
+* @Finalitat: Obtener el MD5SUM de la imagen indicada.
+* @Parametres: in: photoName = el nombre de la imagen que se desea obtener la informacion.
+*              out: checksum = el valor del MD5SUM de la imagen.
+* @Retorn: --
+*
+************************************************/
 void getMD5Sum(char photoName[10], char checksum[33]) {
     int fd[2];
     int n;
@@ -181,6 +208,15 @@ void getMD5Sum(char photoName[10], char checksum[33]) {
     }
 }
 
+/***********************************************
+*
+* @Finalitat: Creador de la trama que se enviara al cliente.
+* @Parametres: out: trama = cadena que contendra la trama a enviar al cliente.
+*              in: tipo = indicara el tipo de comando que sera la trama.
+*              in: data = indicara la informacion importante de la trama.
+* @Retorn: --
+*
+************************************************/
 void createTramaSend(char *trama, char tipo, char *data) {
     int i, j;
     char origen[15] = "ATREIDES\0\0\0\0\0\0\0";
@@ -201,6 +237,13 @@ void createTramaSend(char *trama, char tipo, char *data) {
 
 }
 
+/***********************************************
+*
+* @Finalitat: Separara la trama recibida en tres partes, origen, tipo y data.
+* @Parametres: in: buffer = contendra la trama a separar.
+* @Retorn: Retorna la estructura Trama donde tendra la informacion ya separada.
+*
+************************************************/
 Trama fillTrama(char *buffer) {
     Trama trama;
     int i, j;
@@ -223,6 +266,13 @@ Trama fillTrama(char *buffer) {
     return trama;
 }
 
+/***********************************************
+*
+* @Finalitat: Cada vez que se cree un thread se lanzara con esta funcion que sera el controlador de todas las peticiones que envie el cliente al servidor.
+* @Parametres: in: arg = sera el file descriptor con el que este thread realizara la comunicacion con el cliente.
+* @Retorn: --
+*
+************************************************/
 void *clientController(void *arg) {
     int *clienteFD = (int *) arg;
     char buffer[256], data[240];
@@ -601,6 +651,7 @@ void *clientController(void *arg) {
 
             break;
         } else {
+            //error
             bzero(&data, 240);
             sprintf(data, "ERROR");
             createTramaSend(buffer, 'E', data);
@@ -625,6 +676,13 @@ void *clientController(void *arg) {
     return NULL;
 }
 
+/***********************************************
+*
+* @Finalitat: Esta funcion reprogramara los signals.
+* @Parametres: in: signum = indicara el valor del signal que se disparo.
+* @Retorn: --
+*
+************************************************/
 void signalHandler(int signum) {
     if (signum == SIGINT) {
         //vaciar memoria
@@ -664,10 +722,18 @@ void signalHandler(int signum) {
     }
 }
 
+/***********************************************
+*
+* @Finalitat: Main de la ejecucion.
+* @Parametres: in: argc = numero de parametros recibidos en la ejecucion.
+*              in: argv = cadena de Strings que tendra los parametros.
+* @Retorn: --
+*
+************************************************/
 int main(int argc, char* argv[]) {
     struct sockaddr_in servidor;
 
-    connectedFremens = 0; //inicializar de otra manera
+    connectedFremens = 0;
     num_actuals = 0;
 
     signal(SIGINT, signalHandler);

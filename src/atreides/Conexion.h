@@ -1,3 +1,11 @@
+/***********************************************
+*
+* @Proposit: Libreria que contendra la estructura de los datos de conexion y ciertas funciones
+* @Autor/s: giovanni.vecchies - josue.terrazas
+* @Data creacio: 02/11/2021
+* @Data ultima modificacio: 28/12/2021
+*
+************************************************/
 #ifndef FICHERO_CONEXION_H
 #define FICHERO_CONEXION_H
 

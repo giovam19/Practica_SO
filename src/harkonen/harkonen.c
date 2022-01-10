@@ -1,3 +1,11 @@
+/***********************************************
+*
+* @Proposit: Codigo fuente para el funcionamiento del Harkonen
+* @Autor/s: giovanni.vecchies - josue.terrazas
+* @Data creacio: 05/01/2022
+* @Data ultima modificacio: 08/01/2022
+*
+************************************************/
 #define _GNU_SOURCE
 #include <sys/signal.h>
 #include <sys/socket.h>
@@ -18,6 +26,13 @@
 
 #define print(x) write(1, x, strlen(x))
 
+/***********************************************
+*
+* @Finalitat: Se encargara de ejecutar un scrip que retornara un PID aleatorio de un fremen activo para finalizar su ejecucion.
+* @Parametres: --
+* @Retorn: --
+*
+************************************************/
 int getRandomPID() {
     int fd[2];
     int n, pid;
@@ -60,6 +75,14 @@ int getRandomPID() {
     return pid;
 }
 
+/***********************************************
+*
+* @Finalitat: Main de la ejecucion.
+* @Parametres: in: argc = numero de parametros recibidos en la ejecucion.
+*              in: argv = cadena de Strings que tendra los parametros.
+* @Retorn: --
+*
+************************************************/
 int main(int argc, char *argv[]) {
     int pid, time;
     

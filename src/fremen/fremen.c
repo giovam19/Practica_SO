@@ -1,8 +1,11 @@
-/*
-    giovanni.vecchies
-    josue.terrazas
-*/
-
+/***********************************************
+*
+* @Proposit: Codigo fuente para el funcionamiento del cliente
+* @Autor/s: giovanni.vecchies - josue.terrazas
+* @Data creacio: 15/10/2021
+* @Data ultima modificacio: 10/01/2022
+*
+************************************************/
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -46,6 +49,13 @@ int num_argumentos, socketFD, logged;
 pthread_t removeThread, pollThread;
 semaphore semImage, semLogged, semSocket;
 
+/***********************************************
+*
+* @Finalitat: Separara la trama recibida en tres partes, origen, tipo y data.
+* @Parametres: in: buffer = contendra la trama a separar.
+* @Retorn: Retorna la estructura Trama donde tendra la informacion ya separada.
+*
+************************************************/
 Trama fillTrama(char *buffer) {
     Trama trama;
     int i, j;
@@ -68,9 +78,15 @@ Trama fillTrama(char *buffer) {
     return trama;
 }
 
+/***********************************************
+*
+* @Finalitat: Separar todos los argumentos encontrados en el input del programa.
+* @Parametres: in: str = input con el comando y los argumentos.
+* @Retorn: Devuelve el primer argumento que sera el comando.
+*
+************************************************/
 char *getArgumentos(char* str){
     int j, f;
-    //char *token;
 
     if (argumentos != NULL) {
         for (int i = 0; i < num_argumentos; i++) {
@@ -113,6 +129,15 @@ char *getArgumentos(char* str){
     return argumentos[0];
 }
 
+/***********************************************
+*
+* @Finalitat: Creador de la trama que se enviara al servidor.
+* @Parametres: out: trama = cadena que contendra la trama a enviar al servidor.
+*              in: tipo = indicara el tipo de comando que sera la trama.
+*              in: data = indicara la informacion importante de la trama.
+* @Retorn: --
+*
+************************************************/
 void createTramaSend(char *trama, char tipo, char *data) {
     int i, j;
     char origen[15] = "FREMEN\0\0\0\0\0\0\0\0\0";
@@ -133,6 +158,14 @@ void createTramaSend(char *trama, char tipo, char *data) {
 
 }
 
+/***********************************************
+*
+* @Finalitat: Debera ejecutar el comando en el terminal y printar si hay algun error.
+* @Parametres: in: comando = el comando a ejecutar.
+*              in: args = posibles argumentos que complementan el comando.
+* @Retorn: --
+*
+************************************************/
 void comandoLinux(char *comando, char **args) {
     int pid;
     int status;
@@ -155,6 +188,14 @@ void comandoLinux(char *comando, char **args) {
     }
 }
 
+/***********************************************
+*
+* @Finalitat: Obtener el MD5SUM de la imagen indicada.
+* @Parametres: in: photoName = el nombre de la imagen que se desea obtener la informacion.
+*              out: checksum = el valor del MD5SUM de la imagen.
+* @Retorn: --
+*
+************************************************/
 void getMD5Sum(char *photoName, char checksum[33]) {
     int fd[2];
     int n;
@@ -190,11 +231,19 @@ void getMD5Sum(char *photoName, char checksum[33]) {
     }
 }
 
+/***********************************************
+*
+* @Finalitat: Buscara en la carpeta seleccionada todas las imagenes que existan para eliminarlas.
+* @Parametres: --
+* @Retorn: --
+*
+************************************************/
 void deleteImages() {
     DIR *folder;
     struct dirent *entry;
     int files = 0;
     char **args;
+    char folderName[50];
 
     args = (char **) malloc(sizeof(char *) * 4);
 
@@ -204,7 +253,9 @@ void deleteImages() {
 
     strcpy(args[0], "rm");
 
-    folder = opendir("./fremen/");
+    sprintf(folderName, "./%s/", datos.directorio);
+
+    folder = opendir(folderName);
     if(folder == NULL)
     {
         print("Unable to read directory\n");
@@ -225,6 +276,13 @@ void deleteImages() {
     free(args);
 }
 
+/***********************************************
+*
+* @Finalitat: Se encargara de realizar el polling del servidor, esta funcion se ejecutara en un thread.
+* @Parametres: --
+* @Retorn: --
+*
+************************************************/
 void *pollingFunct() {
     int i;
     char buf[256], data[240];
@@ -280,6 +338,13 @@ void *pollingFunct() {
     return NULL;
 }
 
+/***********************************************
+*
+* @Finalitat: Realizara el proceso de enviar la trama de login al servidor.
+* @Parametres: --
+* @Retorn: --
+*
+************************************************/
 void loginAtreides() {
     struct sockaddr_in cliente;
     char buffer[256], data[240];
@@ -344,6 +409,13 @@ void loginAtreides() {
     }
 }
 
+/***********************************************
+*
+* @Finalitat: Realizara el proceso de enviar la trama para hacer la busqueda por codigo postal.
+* @Parametres: --
+* @Retorn: --
+*
+************************************************/
 void searchInServer() {
     char buffer[256], data[240];
     Trama trama;
@@ -413,6 +485,13 @@ void searchInServer() {
     }
 }
 
+/***********************************************
+*
+* @Finalitat: Enviara las distintas tramas para transmitir una imagen hasta el servidor.
+* @Parametres: --
+* @Retorn: --
+*
+************************************************/
 void sendImage() {
     char checksum5[33], buffer[256], data[240], imagen[100];
     int fdImg, size, vueltas, resto;
@@ -472,6 +551,13 @@ void sendImage() {
     }
 }
 
+/***********************************************
+*
+* @Finalitat: Realizara el proceso para recibir las distintas tramas donde recibira una imagen desde el servidor.
+* @Parametres: --
+* @Retorn: --
+*
+************************************************/
 void getPhoto() {
     char buffer[256], data[240];
     Trama trama;
@@ -563,6 +649,13 @@ void getPhoto() {
     }
 }
 
+/***********************************************
+*
+* @Finalitat: Liberara toda la memoria dinamica reservada, eliminara todos los threads y semaforos creados
+* @Parametres: --
+* @Retorn: --
+*
+************************************************/
 void freeAllMemory() {
         for (int i = 0; i < num_argumentos; i++) {
             if (argumentos[i] != NULL)
@@ -595,6 +688,13 @@ void freeAllMemory() {
 		SEM_destructor(&semLogged);
 }
 
+/***********************************************
+*
+* @Finalitat: Realizara el proceso de enviar la trama para cerrar la cesion en el servidor.
+* @Parametres: --
+* @Retorn: --
+*
+************************************************/
 void logoutServer() {
 
     if (socketFD > 0) {
@@ -609,6 +709,13 @@ void logoutServer() {
     }
 }
 
+/***********************************************
+*
+* @Finalitat: Esta funcion reprogramara los signals.
+* @Parametres: in: signum = indicara el valor del signal que se disparo.
+* @Retorn: --
+*
+************************************************/
 void signalHandler(int signum) {
     if (signum == SIGINT) {
         logoutServer();
@@ -623,6 +730,13 @@ void signalHandler(int signum) {
     }
 }
 
+/***********************************************
+*
+* @Finalitat: Se encargara de recibir el input, ejecutar la funcion para separar los argumentos y el comando y segun el comando ejecutar la funcion que toque.
+* @Parametres: in: str = cadena con el comando y los argumentos.
+* @Retorn: --
+*
+************************************************/
 void menuComandos(char *str) {
 
     char *input = getArgumentos(str);
@@ -691,7 +805,8 @@ void menuComandos(char *str) {
     } else if (strcasecmp(input, "logout") == 0) { //Logout
         if (num_argumentos - 1 > 0) {
             print("Comanda KO. Massa parametres\n");
-        } else { //Linux
+        } else { 
+            //Linux
             SEM_wait(&semSocket);
             logoutServer();
             SEM_signal(&semSocket);
@@ -709,6 +824,13 @@ void menuComandos(char *str) {
     
 }
 
+/***********************************************
+*
+* @Finalitat: Se encargara llamar la funcion que eliminara las imagenes del directorio especificado, se ejecutara en un thread.
+* @Parametres: --
+* @Retorn: --
+*
+************************************************/
 void *removeImages() {
     while(1) {
         sleep(datos.tiempo);
@@ -720,6 +842,14 @@ void *removeImages() {
     return NULL;
 }
 
+/***********************************************
+*
+* @Finalitat: Main de la ejecucion.
+* @Parametres: in: argc = numero de parametros recibidos en la ejecucion.
+*              in: argv = cadena de Strings que tendra los parametros.
+* @Retorn: --
+*
+************************************************/
 int main(int argc, char* argv[]) {
     char input[40];
     int n;

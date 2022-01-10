@@ -1,5 +1,21 @@
+/***********************************************
+*
+* @Proposit: Contendra la funciones desarrolladas de la libreria
+* @Autor/s: giovanni.vecchies - josue.terrazas
+* @Data creacio: 02/11/2021
+* @Data ultima modificacio: 28/12/2021
+*
+************************************************/
 #include "Conexion.h"
 
+/***********************************************
+*
+* @Finalitat: Se encargara de leer hasta cierto caracter de un file descriptor.
+* @Parametres: in: fd = file descriptor de donde se realizara la lectura.
+*              in: end = el caracter que marcara hasta donde se realizara la lectura.
+* @Retorn: Retornara la cadena leida.
+*
+************************************************/
 char* read_until(int fd, char end) {
     int i = 0, size;
     char c = '\0';
@@ -21,6 +37,13 @@ char* read_until(int fd, char end) {
     return string;
 }
 
+/***********************************************
+*
+* @Finalitat: Leera el fichero de configuracion y rellenara con esa informacion la estructura de Conexion.
+* @Parametres: in: nombre = nombre del archivo de configuracion.
+* @Retorn: Variable de tipo Conexion con los datos leidos.
+*
+************************************************/
 Conexion leerFichero(char *nombre) {
     Conexion datos;
     int fdFichero;
